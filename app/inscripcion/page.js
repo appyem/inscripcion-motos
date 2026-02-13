@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import Image from 'next/image';
 
 export default function InscripcionPage() {
@@ -20,14 +20,13 @@ export default function InscripcionPage() {
   const [edadValida, setEdadValida] = useState(true);
   const sectores = ['Samaria', 'San Luis', 'Morritos', 'Verso', 'Soledad', 'Paila', 'El Pintado', 'Otro'];
 
+  // Convertir texto a mayúsculas automáticamente
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (name === 'cedula') {
-      const sanitizedValue = value.replace(/[^0-9]/g, '');
-      setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '') }));
     } else if (name === 'placa') {
-      const sanitizedValue = value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5);
-      setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5) }));
     } else if (name === 'nombreCompleto') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
     } else {
@@ -35,6 +34,7 @@ export default function InscripcionPage() {
     }
   };
 
+  // Validar edad en tiempo real
   useEffect(() => {
     if (formData.fechaNacimiento) {
       const hoy = new Date();
@@ -51,6 +51,7 @@ export default function InscripcionPage() {
     }
   }, [formData.fechaNacimiento]);
 
+  // Validación del formulario
   const validateForm = () => {
     setError('');
     
@@ -63,101 +64,104 @@ export default function InscripcionPage() {
       return false;
     }
     if (!edadValida) {
-      setError('DEBES SER MAYOR DE 18 AÑOS PARA INSCRIBIRTE');
+      setError('DEBES SER MAYOR DE 18 AÑOS');
       return false;
     }
     if (formData.cedula.length < 6 || formData.cedula.length > 10) {
-      setError('LA CÉDULA DEBE TENER ENTRE 6 Y 10 DÍGITOS');
+      setError('CÉDULA DEBE TENER 6-10 DÍGITOS');
       return false;
     }
     if (formData.placa.length !== 5) {
-      setError('LA PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
+      setError('PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
       return false;
     }
     if (!/^[A-Z]{3}[0-9]{2}$/.test(formData.placa)) {
-      setError('FORMATO INVÁLIDO: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)');
+      setError('FORMATO PLACA: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)');
       return false;
     }
     return true;
   };
 
-  // CORREGIDO: Manejo robusto de errores para Firebase
+  // Verificación de duplicados MEJORADA (con timeout y fallback)
   const checkDuplicates = async () => {
     try {
-      setError('VERIFICANDO DATOS... (NO CIERRES LA PANTALLA)');
+      setError('🔍 Verificando duplicados...');
       
-      // Verificar cédula duplicada
-      const cedulaQuery = query(
+      // Timeout de 5 segundos para evitar bloqueos
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+      );
+      
+      // Verificar cédula
+      const cedulaCheck = getDocs(query(
         collection(db, 'inscripciones'),
         where('cedula', '==', formData.cedula)
-      );
+      ));
       
-      const cedulaSnapshot = await getDocs(cedulaQuery);
-      
+      const cedulaSnapshot = await Promise.race([cedulaCheck, timeoutPromise]);
       if (!cedulaSnapshot.empty) {
-        setError('¡ESTA CÉDULA YA ESTÁ INSCRITA! NO SE PERMITEN DUPLICADOS');
+        setError('❌ ¡CÉDULA YA REGISTRADA! Usa otra cédula');
         return true;
       }
 
-      // Verificar placa duplicada
-      const placaQuery = query(
+      // Verificar placa
+      const placaCheck = getDocs(query(
         collection(db, 'inscripciones'),
         where('placa', '==', formData.placa)
-      );
+      ));
       
-      const placaSnapshot = await getDocs(placaQuery);
-      
+      const placaSnapshot = await Promise.race([placaCheck, timeoutPromise]);
       if (!placaSnapshot.empty) {
-        setError('¡ESTA PLACA YA ESTÁ INSCRITA! NO SE PERMITEN DUPLICADOS');
+        setError('❌ ¡PLACA YA REGISTRADA! Usa otra placa');
         return true;
       }
 
-      setError(''); // Limpiar mensaje de verificación
+      setError('');
       return false;
     } catch (err) {
-      console.error('Error crítico verificando duplicados:', err);
+      console.error('Error en verificación:', err);
       
-      // Manejo específico de errores de Firebase
-      if (err.code === 'permission-denied') {
-        setError('❌ ERROR DE SEGURIDAD: Reglas de Firebase bloqueando verificación. Contacte al administrador URGENTE.');
-      } else if (err.code === 'unavailable') {
-        setError('❌ ERROR DE RED: Sin conexión a internet o Firebase no disponible. Verifica tu conexión.');
-      } else if (err.code === 'invalid-argument') {
-        setError('❌ ERROR DE DATOS: Formato inválido en cédula o placa. Usa formato correcto (placa: ABC12).');
-      } else {
-        setError(`❌ ERROR INESPERADO (${err.code || 'SIN CÓDIGO'}): ${err.message || 'Falló la verificación'}`);
+      // Si hay timeout o error de red, permitir continuar (con advertencia)
+      if (err.message === 'TIMEOUT' || err.code === 'unavailable') {
+        console.warn('Verificación de duplicados fallida. Permitiendo inscripción...');
+        setError('⚠️ Verificación lenta. Continuando con precaución...');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1s
+        return false; // Permitir continuar
       }
       
-      return true; // Bloquear inscripción si hay error
+      // Otros errores bloquean
+      setError(`❌ ERROR: ${err.message || 'Verificación fallida'}`);
+      return true;
     }
   };
 
-  // CORREGIDO: Try-catch global para toda la operación
+  // Manejo del submit MEJORADO
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
     
+    // Validación básica
+    if (!validateForm()) return;
+    
+    // Verificación de duplicados
+    const isDuplicate = await checkDuplicates();
+    if (isDuplicate && !error.includes('Verificación lenta')) return;
+    
+    setIsLoading(true);
+    
     try {
-      // Validación básica del formulario
-      if (!validateForm()) return;
-      
-      // Verificación de duplicados con manejo de errores
-      const isDuplicate = await checkDuplicates();
-      if (isDuplicate) return;
-      
-      setIsLoading(true);
-      
-      // Guardar en Firestore
+      // Preparar datos
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         fechaNacimiento: formData.fechaNacimiento,
         cedula: formData.cedula.trim(),
         placa: formData.placa.trim(),
         sector: formData.sector,
-        createdAt: serverTimestamp()
+        createdAt: new Date() // Usar timestamp del cliente para evitar problemas
       };
 
+      // Guardar en Firestore
       await addDoc(collection(db, 'inscripciones'), inscripcionData);
       
       // Éxito
@@ -170,22 +174,21 @@ export default function InscripcionPage() {
         sector: 'Samaria'
       });
       
+      // Resetear después de 8 segundos
       setTimeout(() => setSuccess(false), 8000);
       
     } catch (err) {
-      console.error('Error crítico guardando inscripción:', err);
+      console.error('Error guardando:', err);
       
-      // Manejo específico de errores de escritura en Firebase
+      // Mensajes de error específicos
       if (err.code === 'permission-denied') {
-        setError('❌ ACCESO DENEGADO: Reglas de Firebase bloqueando escritura. ¡ADMINISTRADOR DEBE REVISAR REGLAS!');
-      } else if (err.code === 'unavailable') {
-        setError('❌ SERVICIO NO DISPONIBLE: Firebase offline o sin conexión. Intenta más tarde.');
+        setError('❌ ERROR CRÍTICO: Reglas de Firebase bloqueando escritura. Contacte al administrador INMEDIATAMENTE.');
       } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
-        setError('❌ DATOS INVÁLIDOS: Formato incorrecto. Verifica placa (ABC12), cédula y fecha.');
-      } else if (err.code === 'resource-exhausted') {
-        setError('❌ LÍMITE ALCANZADO: Demasiados intentos. Espera 1 minuto e intenta nuevamente.');
+        setError('❌ DATOS INVÁLIDOS: Verifica formato de placa (ABC12) y cédula');
+      } else if (err.code === 'unavailable') {
+        setError('❌ SIN CONEXIÓN: Verifica tu internet e intenta nuevamente');
       } else {
-        setError(`❌ ERROR FATAL (${err.code || 'DESCONOCIDO'}): ${err.message || 'No se pudo guardar'}. Contacte al administrador.`);
+        setError(`❌ ERROR (${err.code || 'DESCONOCIDO'}): ${err.message || 'Falló el registro'}`);
       }
     } finally {
       setIsLoading(false);
@@ -225,7 +228,6 @@ export default function InscripcionPage() {
                   fill
                   className="object-cover"
                   loading="lazy"
-                  priority={false}
                 />
                 <div className="absolute bottom-2 left-2 bg-[#0033A0] bg-opacity-85 text-white px-2.5 py-1 rounded-full border-2 border-[#FFD700] backdrop-blur-sm z-10">
                   <span className="font-bold text-sm">JUAN MANUEL LONDOÑO</span>
@@ -237,13 +239,13 @@ export default function InscripcionPage() {
                 <h2 className="text-xl md:text-2xl font-bold text-[#0033A0] mb-2">INSCRIPCIÓN DE MOTOS</h2>
                 <div className="bg-[#0033A0] text-white py-1.5 px-3 rounded-full inline-block mb-2 border-2 border-[#FFD700]">
                   <p className="text-sm font-bold">RECIBIMIENTO A JUAN MANUEL LONDOÑO</p>
-                  <p className="text-xs">Candidato a la Cámara de Representantes - Tarjetón C 101</p>
+                  <p className="text-xs">Candidato a la Cámara - Tarjetón C 101</p>
                 </div>
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
-                  <p className="font-bold text-red-800 text-xs">⚠️ ADVERTENCIA IMPORTANTE:</p>
+                  <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
-                    • NO SE PERMITEN MENORES DE EDAD<br/>
-                    • PLACA VÁLIDA DE COLOMBIA (3 LETRAS + 2 NÚMEROS)
+                    • MAYORES DE 18 AÑOS<br/>
+                    • PLACA COLOMBIANA VÁLIDA (3 LETRAS + 2 NÚMEROS)
                   </p>
                 </div>
               </div>
@@ -257,8 +259,7 @@ export default function InscripcionPage() {
               {success && (
                 <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
                   <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
-                  <p className="text-xs">Tu información ha sido registrada correctamente</p>
-                  <p className="mt-0.5 font-bold text-sm">¡GRACIAS POR ACOMPAÑAR A JUAN MANUEL LONDOÑO!</p>
+                  <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño!</p>
                   
                   <button
                     onClick={() => {
@@ -267,7 +268,7 @@ export default function InscripcionPage() {
                     }}
                     className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
                   >
-                    <span className="mr-1">📲</span> INVITAR AMIGOS POR WHATSAPP
+                    <span className="mr-1">📲</span> INVITAR AMIGOS
                   </button>
                 </div>
               )}
@@ -281,20 +282,20 @@ export default function InscripcionPage() {
                     value={formData.nombreCompleto}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
-                    placeholder="EJ: JUAN MANUEL LONDOÑO"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
+                    placeholder="EJ: JUAN PEREZ"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">FECHA DE NACIMIENTO *</label>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">FECHA NACIMIENTO *</label>
                   <input
                     type="date"
                     name="fechaNacimiento"
                     value={formData.fechaNacimiento}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs"
                   />
                   {!edadValida && formData.fechaNacimiento && (
                     <p className="text-red-600 font-bold mt-0.5 text-[10px]">❌ DEBES SER MAYOR DE 18 AÑOS</p>
@@ -310,13 +311,13 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     maxLength="10"
-                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
                     placeholder="SOLO NÚMEROS"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA DE LA MOTO *</label>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA MOTO *</label>
                   <input
                     type="text"
                     name="placa"
@@ -324,10 +325,10 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     maxLength="5"
-                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
                     placeholder="EJ: ABC12"
                   />
-                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">FORMATO COLOMBIANO: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)</p>
+                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">3 LETRAS + 2 NÚMEROS (EJ: ABC12)</p>
                 </div>
 
                 <div>
@@ -336,7 +337,7 @@ export default function InscripcionPage() {
                     name="sector"
                     value={formData.sector}
                     onChange={handleInputChange}
-                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs appearance-none"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none"
                   >
                     {sectores.map((sector) => (
                       <option key={sector} value={sector} className="bg-white text-[#0033A0] font-bold">
@@ -359,7 +360,7 @@ export default function InscripcionPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      {error.includes('VERIFICANDO') ? error : 'PROCESANDO INSCRIPCIÓN...'}
+                      {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'ENVIANDO...'}
                     </span>
                   ) : (
                     '✅ INSCRIBIR MOTO AHORA ✅'
@@ -368,30 +369,27 @@ export default function InscripcionPage() {
               </form>
 
               <div className="mt-4 pt-3 border-t border-[#0033A0] text-center bg-blue-50 p-2.5 rounded-b-xl">
-                <p className="font-bold text-[#0033A0] text-xs">✅ INSCRIPCIÓN GRATUITA Y SEGURA</p>
-                <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 RECIBIRÁS CONFIRMACIÓN INMEDIATA</p>
-                <p className="mt-1 text-[#0033A0] font-bold text-[10px]">VOTA EN EL TARJETÓN: LETRA C Y NÚMERO 101</p>
+                <p className="font-bold text-[#0033A0] text-xs">✅ GRATIS Y SEGURO</p>
+                <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 CONFIRMACIÓN INMEDIATA</p>
               </div>
             </div>
 
             <div className="text-center text-white text-[10px] mt-2.5">
-              <p>PLATAFORMA OFICIAL DEL PARTIDO CONSERVADOR COLOMBIANO</p>
-              <p className="mt-0.5">Para el recibimiento de Juan Manuel Londoño - Candidato a la Cámara</p>
+              <p>PLATAFORMA OFICIAL - PARTIDO CONSERVADOR COLOMBIANO</p>
+              <p className="mt-0.5">Juan Manuel Londoño - Candidato a la Cámara</p>
               <div className="mt-2 flex justify-center space-x-3">
                 <span className="text-xl">🇨🇴</span>
                 <span className="text-xl">💙</span>
                 <span className="text-xl font-bold">C 101</span>
               </div>
-              <p className="mt-1 font-bold">MARQUE EN EL TARJETÓN: LETRA C Y NÚMERO 101</p>
             </div>
           </div>
         </main>
 
         <footer className="bg-[#002266] mt-4 py-2.5 text-center border-t border-[#FFD700]">
           <div className="container mx-auto px-3 text-white">
-            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO CONSERVADOR COLOMBIANO - TARJETÓN C 101</p>
-            <p className="mt-0.5 text-[8px]">Sistema de inscripción de motos para eventos oficiales</p>
-            <p className="mt-1 text-[9px] font-bold">NO OLVIDE: EN EL TARJETÓN MARQUE LA LETRA C Y EL NÚMERO 101</p>
+            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO CONSERVADOR - TARJETÓN C 101</p>
+            <p className="mt-0.5 text-[8px]">Sistema de inscripción oficial</p>
           </div>
         </footer>
       </div>

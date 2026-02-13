@@ -3,7 +3,14 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  updateDoc 
+} from 'firebase/firestore';
 
 export default function DashboardPage() {
   const [inscripciones, setInscripciones] = useState([]);
@@ -13,6 +20,7 @@ export default function DashboardPage() {
   const [filtroSector, setFiltroSector] = useState('todos');
   const [totalInscritos, setTotalInscritos] = useState(0);
   const [formUrl, setFormUrl] = useState('');
+  const [updatingId, setUpdatingId] = useState(null); // Para controlar loading del botón de bono
   const sectores = ['todos', 'Samaria', 'San Luis', 'Morritos', 'Verso', 'Soledad', 'Paila', 'El Pintado', 'Otro'];
 
   useEffect(() => {
@@ -20,37 +28,38 @@ export default function DashboardPage() {
       setFormUrl(`${window.location.origin}/inscripcion`);
     }
     
-    cargarInscripciones();
-    const interval = setInterval(cargarInscripciones, 3000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const cargarInscripciones = async () => {
-    try {
-      setLoading(true);
-      const q = query(collection(db, 'inscripciones'), orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
-      
-      const datos = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        fechaFormateada: doc.data().createdAt?.toDate?.().toLocaleString('es-CO', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        }) || 'N/A'
-      }));
+    // USAR LISTENER EN TIEMPO REAL EN LUGAR DE INTERVALOS (SOLUCIÓN AL BUCLE)
+    const q = query(collection(db, 'inscripciones'), orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const datos = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          // Manejar documentos sin campo bonoCancelado (compatibilidad hacia atrás)
+          bonoCancelado: data.bonoCancelado || false,
+          fechaFormateada: data.createdAt?.toDate?.().toLocaleString('es-CO', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }) || 'N/A'
+        };
+      });
       
       setInscripciones(datos);
       setTotalInscritos(datos.length);
-    } catch (error) {
-      console.error('Error cargando inscripciones:', error);
-    } finally {
+      setLoading(false); // Solo se carga una vez al inicio
+    }, (error) => {
+      console.error('Error en listener de Firestore:', error);
       setLoading(false);
-    }
-  };
+    });
+
+    // Cleanup del listener al desmontar
+    return () => unsubscribe();
+  }, []);
 
   const inscripcionesFiltradas = inscripciones.filter(ins => {
     const coincideCedula = filtroCedula ? ins.cedula.includes(filtroCedula) : true;
@@ -73,11 +82,29 @@ export default function DashboardPage() {
   const shareViaWhatsApp = () => {
     const mensaje = `🏍️💙 ¡ÚNETE AL RECIBIMIENTO HISTÓRICO! 🇨🇴\n\nAcompaña a JUAN MANUEL LONDOÑO C101 a la Cámara de Representantes 🏛️\n\n✅ Inscripción rápida y segura\n✅ Confirma tu participación\n✅ Sé parte del cambio con el Partido Conservador\n\n👉 INSCRÍBETE AQUÍ:\n${formUrl}\n\n#C101 #PartidoConservador #JuanManuelLondoño #CámaraDeRepresentantes 💙✨`;
     
-    // URL para abrir WhatsApp nativo (funciona en móviles y desktop)
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    
-    // Abrir en nueva pestaña (activa la app nativa en móviles)
     window.open(whatsappUrl, '_blank');
+  };
+
+  // FUNCIÓN PARA MARCAR/DESMARCAR BONO DE GASOLINA
+  const toggleBonoGasolina = async (id, estadoActual) => {
+    try {
+      setUpdatingId(id);
+      const docRef = doc(db, 'inscripciones', id);
+      
+      // Actualizar solo el campo bonoCancelado
+      await updateDoc(docRef, {
+        bonoCancelado: !estadoActual,
+        updatedAt: new Date() // Timestamp de actualización
+      });
+      
+      // El listener en tiempo real actualizará automáticamente la UI
+    } catch (error) {
+      console.error('Error actualizando estado del bono:', error);
+      alert(`Error al actualizar el estado del bono: ${error.message}`);
+    } finally {
+      setUpdatingId(null);
+    }
   };
 
   return (
@@ -86,7 +113,6 @@ export default function DashboardPage() {
         <div className="container mx-auto px-4 py-4 md:py-6 flex flex-col md:flex-row justify-between items-center">
           <div className="flex items-center space-x-3 md:space-x-4 mb-4 md:mb-0">
             <div className="flex items-center space-x-2">
-              {/* Logo C 101 diseñado con CSS - Sin dependencia de imagen */}
               <div className="bg-white p-1.5 md:p-2 rounded-full shadow-lg border-2 border-[#FFD700]">
                 <div className="w-9 h-9 md:w-11 md:h-11 bg-[#0033A0] rounded-full flex flex-col items-center justify-center">
                   <span className="font-bold text-white text-lg md:text-xl leading-none">C</span>
@@ -199,6 +225,16 @@ export default function DashboardPage() {
           <div className="p-3 md:p-4 border-b border-[#FFD700] bg-[#0033A0]/30">
             <h2 className="text-xl md:text-2xl font-bold text-[#FFD700]">LISTADO DE INSCRIPCIONES</h2>
             <p className="mt-1 text-sm md:text-base">Resultados: {inscripcionesFiltradas.length} de {totalInscritos}</p>
+            <div className="mt-2 flex items-center space-x-2 text-xs">
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-red-500 rounded-full mr-1"></div>
+                <span>Bono pendiente</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 bg-green-500 rounded-full mr-1"></div>
+                <span>Bono cancelado</span>
+              </div>
+            </div>
           </div>
           
           {loading ? (
@@ -207,7 +243,8 @@ export default function DashboardPage() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              <p className="mt-3 md:mt-4 text-base md:text-xl font-bold">CARGANDO DATOS...</p>
+              <p className="mt-3 md:mt-4 text-base md:text-xl font-bold">CARGANDO DATOS INICIALES...</p>
+              <p className="mt-2 text-xs">Conectando con base de datos en tiempo real</p>
             </div>
           ) : inscripcionesFiltradas.length === 0 ? (
             <div className="p-6 md:p-12 text-center">
@@ -218,9 +255,11 @@ export default function DashboardPage() {
               <table className="w-full text-xs md:text-sm">
                 <thead className="bg-[#0033A0] text-[#FFD700] sticky top-0">
                   <tr>
+                    <th className="p-2 md:p-3 text-left font-bold">ESTADO BONO</th>
                     <th className="p-2 md:p-3 text-left font-bold">FECHA/HORA</th>
                     <th className="p-2 md:p-3 text-left font-bold">NOMBRE</th>
                     <th className="p-2 md:p-3 text-left font-bold">CÉDULA</th>
+                    <th className="p-2 md:p-3 text-left font-bold">CELULAR</th>
                     <th className="p-2 md:p-3 text-left font-bold">PLACA</th>
                     <th className="p-2 md:p-3 text-left font-bold">SECTOR</th>
                   </tr>
@@ -233,9 +272,36 @@ export default function DashboardPage() {
                         index % 2 === 0 ? 'bg-white/5' : 'bg-white/10'
                       } hover:bg-[#FFD700]/10 transition-colors`}
                     >
+                      <td className="p-2 md:p-3">
+                        <button
+                          onClick={() => toggleBonoGasolina(ins.id, ins.bonoCancelado)}
+                          disabled={updatingId === ins.id}
+                          className={`px-2 py-1 rounded-full font-bold text-xs flex items-center justify-center ${
+                            ins.bonoCancelado 
+                              ? 'bg-green-500 hover:bg-green-600 text-white' 
+                              : 'bg-red-500 hover:bg-red-600 text-white'
+                          } ${updatingId === ins.id ? 'opacity-75 cursor-wait' : 'transition-all'}`}
+                          title={ins.bonoCancelado ? 'Bono ya cancelado - Clic para revertir' : 'Marcar como bono cancelado'}
+                        >
+                          {updatingId === ins.id && ins.id === updatingId ? (
+                            <svg className="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : ins.bonoCancelado ? (
+                            <span>✅</span>
+                          ) : (
+                            <span>⏳</span>
+                          )}
+                          <span className="ml-1">
+                            {ins.bonoCancelado ? 'CANCELADO' : 'PENDIENTE'}
+                          </span>
+                        </button>
+                      </td>
                       <td className="p-2 md:p-3 font-mono text-[10px] md:text-xs">{ins.fechaFormateada}</td>
-                      <td className="p-2 md:p-3 font-bold text-xs md:text-sm truncate max-w-37.5 md:max-w-none">{ins.nombreCompleto}</td>
+                      <td className="p-2 md:p-3 font-bold text-xs md:text-sm truncate max-w-30 md:max-w-none">{ins.nombreCompleto}</td>
                       <td className="p-2 md:p-3 font-mono text-xs md:text-sm">{ins.cedula}</td>
+                      <td className="p-2 md:p-3 font-mono text-xs md:text-sm">{ins.celular || 'N/A'}</td>
                       <td className="p-2 md:p-3 font-mono text-xs md:text-sm">{ins.placa}</td>
                       <td className="p-2 md:p-3 font-bold text-[#FFD700] text-xs md:text-sm">{ins.sector}</td>
                     </tr>

@@ -69,6 +69,17 @@ export default function DashboardPage() {
     alert('¡URL copiada al portapapeles! Ahora puedes compartirla.');
   };
 
+  // FUNCIÓN PARA COMPARTIR POR WHATSAPP NATIVO
+  const shareViaWhatsApp = () => {
+    const mensaje = `🏍️💙 ¡ÚNETE AL RECIBIMIENTO HISTÓRICO! 🇨🇴\n\nAcompaña a JUAN MANUEL LONDOÑO C101 a la Cámara de Representantes 🏛️\n\n✅ Inscripción rápida y segura\n✅ Confirma tu participación\n✅ Sé parte del cambio con el Partido Conservador\n\n👉 INSCRÍBETE AQUÍ:\n${formUrl}\n\n#C101 #PartidoConservador #JuanManuelLondoño #CámaraDeRepresentantes 💙✨`;
+    
+    // URL para abrir WhatsApp nativo (funciona en móviles y desktop)
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+    
+    // Abrir en nueva pestaña (activa la app nativa en móviles)
+    window.open(whatsappUrl, '_blank');
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-br from-[#002266] to-[#0033A0] text-white">
       <header className="bg-[#001a4d] shadow-lg border-b-4 border-[#FFD700]">
@@ -104,15 +115,28 @@ export default function DashboardPage() {
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 md:p-4 mb-4">
             <p className="text-white text-base md:text-lg font-mono break-all text-center">{formUrl || 'Cargando URL...'}</p>
           </div>
-          <button
-            onClick={copyToClipboard}
-            className="w-full bg-[#FFD700] hover:bg-yellow-400 text-[#0033A0] font-bold py-3 px-6 rounded-lg text-lg transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
-          >
-            📋 COPIAR URL PARA COMPARTIR
-          </button>
-          <p className="mt-3 text-center text-yellow-200 text-xs md:text-sm">
-            Comparte este enlace para que las personas puedan inscribir sus motos
-          </p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <button
+              onClick={copyToClipboard}
+              className="w-full bg-[#FFD700] hover:bg-yellow-400 text-[#0033A0] font-bold py-3 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
+            >
+              <span className="mr-2">📋</span> COPIAR URL
+            </button>
+            
+            <button
+              onClick={shareViaWhatsApp}
+              className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-3 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
+            >
+              <span className="mr-2 text-2xl">📱</span> COMPARTIR POR WHATSAPP
+            </button>
+          </div>
+          
+          <div className="bg-[#25D366]/20 border-l-4 border-[#25D366] p-3 rounded-r">
+            <p className="text-white font-bold text-xs md:text-sm text-center">
+              ✨ El mensaje incluye emojis y enlace directo de inscripción
+            </p>
+          </div>
         </div>
 
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 md:p-6 mb-6 border border-[#FFD700]">

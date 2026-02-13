@@ -26,7 +26,8 @@ export default function InscripcionPage() {
       const sanitizedValue = value.replace(/[^0-9]/g, '');
       setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     } else if (name === 'placa') {
-      const sanitizedValue = value.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+      // Solo permite letras y números, convierte a mayúsculas, máximo 5 caracteres
+      const sanitizedValue = value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5);
       setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     } else if (name === 'nombreCompleto') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
@@ -70,12 +71,13 @@ export default function InscripcionPage() {
       setError('LA CÉDULA DEBE TENER ENTRE 6 Y 10 DÍGITOS');
       return false;
     }
-    if (formData.placa.length < 6 || formData.placa.length > 7) {
-      setError('LA PLACA DEBE TENER ENTRE 6 Y 7 CARACTERES');
+    // VALIDACIÓN CORREGIDA PARA PLACAS COLOMBIANAS: 3 LETRAS + 2 NÚMEROS = 5 CARACTERES EXACTOS
+    if (formData.placa.length !== 5) {
+      setError('LA PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
       return false;
     }
-    if (!/^[A-Z0-9]{6,7}$/.test(formData.placa)) {
-      setError('FORMATO DE PLACA INVÁLIDO (SOLO LETRAS Y NÚMEROS)');
+    if (!/^[A-Z]{3}[0-9]{2}$/.test(formData.placa)) {
+      setError('FORMATO INVÁLIDO: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)');
       return false;
     }
     return true;
@@ -140,7 +142,7 @@ export default function InscripcionPage() {
         sector: 'Samaria'
       });
       
-      setTimeout(() => setSuccess(false), 5000);
+      setTimeout(() => setSuccess(false), 8000);
     } catch (err) {
       console.error('Error guardando inscripción:', err);
       setError('ERROR AL GUARDAR LA INSCRIPCIÓN. INTENTE NUEVAMENTE');
@@ -201,7 +203,8 @@ export default function InscripcionPage() {
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
                   <p className="font-bold text-red-800 text-xs">⚠️ ADVERTENCIA IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
-                    NO SE PERMITEN MENORES DE EDAD NI MOTOS SIN PLACA
+                    • NO SE PERMITEN MENORES DE EDAD<br/>
+                    • PLACA VÁLIDA DE COLOMBIA (3 LETRAS + 2 NÚMEROS)
                   </p>
                 </div>
               </div>
@@ -214,9 +217,19 @@ export default function InscripcionPage() {
 
               {success && (
                 <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
-                  <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA!</h3>
+                  <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
                   <p className="text-xs">Tu información ha sido registrada correctamente</p>
                   <p className="mt-0.5 font-bold text-sm">¡GRACIAS POR ACOMPAÑAR A JUAN MANUEL LONDOÑO!</p>
+                  
+                  <button
+                    onClick={() => {
+                      const mensaje = `🏍️💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 al recibimiento 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador 💙✨`;
+                      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
+                    }}
+                    className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
+                  >
+                    <span className="mr-1">📲</span> INVITAR AMIGOS POR WHATSAPP
+                  </button>
                 </div>
               )}
 
@@ -271,11 +284,11 @@ export default function InscripcionPage() {
                     value={formData.placa}
                     onChange={handleInputChange}
                     required
-                    maxLength="7"
+                    maxLength="5"
                     className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] focus:border-transparent text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
-                    placeholder="EJ: ABC123"
+                    placeholder="EJ: ABC12"
                   />
-                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">SOLO LETRAS Y NÚMEROS (6-7 CARACTERES)</p>
+                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">FORMATO COLOMBIANO: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)</p>
                 </div>
 
                 <div>

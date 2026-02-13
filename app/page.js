@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [filtroSector, setFiltroSector] = useState('todos');
   const [totalInscritos, setTotalInscritos] = useState(0);
   const [formUrl, setFormUrl] = useState('');
-  const [updatingId, setUpdatingId] = useState(null); // Para controlar loading del botón de bono
+  const [updatingId, setUpdatingId] = useState(null);
   const sectores = ['todos', 'Samaria', 'San Luis', 'Morritos', 'Verso', 'Soledad', 'Paila', 'El Pintado', 'Otro'];
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function DashboardPage() {
       setFormUrl(`${window.location.origin}/inscripcion`);
     }
     
-    // USAR LISTENER EN TIEMPO REAL EN LUGAR DE INTERVALOS (SOLUCIÓN AL BUCLE)
+    // USAR LISTENER EN TIEMPO REAL
     const q = query(collection(db, 'inscripciones'), orderBy('createdAt', 'desc'));
     
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -37,8 +37,7 @@ export default function DashboardPage() {
         return {
           id: doc.id,
           ...data,
-          // Manejar documentos sin campo bonoCancelado (compatibilidad hacia atrás)
-          bonoCancelado: data.bonoCancelado || false,
+          bonoCancelado: data.bonoCancelado || false, // Valor por defecto si no existe
           fechaFormateada: data.createdAt?.toDate?.().toLocaleString('es-CO', {
             year: 'numeric',
             month: 'short',
@@ -51,15 +50,18 @@ export default function DashboardPage() {
       
       setInscripciones(datos);
       setTotalInscritos(datos.length);
-      setLoading(false); // Solo se carga una vez al inicio
+      setLoading(false);
     }, (error) => {
       console.error('Error en listener de Firestore:', error);
       setLoading(false);
     });
 
-    // Cleanup del listener al desmontar
     return () => unsubscribe();
   }, []);
+
+  // CALCULAR ESTADÍSTICAS DE BONOS (DE TODOS LOS REGISTROS)
+  const totalPendientes = inscripciones.filter(ins => !ins.bonoCancelado).length;
+  const totalCancelados = inscripciones.filter(ins => ins.bonoCancelado).length;
 
   const inscripcionesFiltradas = inscripciones.filter(ins => {
     const coincideCedula = filtroCedula ? ins.cedula.includes(filtroCedula) : true;
@@ -78,7 +80,6 @@ export default function DashboardPage() {
     alert('¡URL copiada al portapapeles! Ahora puedes compartirla.');
   };
 
-  // FUNCIÓN PARA COMPARTIR POR WHATSAPP NATIVO
   const shareViaWhatsApp = () => {
     const mensaje = `🏍️💙 ¡ÚNETE AL RECIBIMIENTO HISTÓRICO! 🇨🇴\n\nAcompaña a JUAN MANUEL LONDOÑO C101 a la Cámara de Representantes 🏛️\n\n✅ Inscripción rápida y segura\n✅ Confirma tu participación\n✅ Sé parte del cambio con el Partido Conservador\n\n👉 INSCRÍBETE AQUÍ:\n${formUrl}\n\n#C101 #PartidoConservador #JuanManuelLondoño #CámaraDeRepresentantes 💙✨`;
     
@@ -86,22 +87,24 @@ export default function DashboardPage() {
     window.open(whatsappUrl, '_blank');
   };
 
-  // FUNCIÓN PARA MARCAR/DESMARCAR BONO DE GASOLINA
+  // FUNCIÓN CORREGIDA PARA MARCAR/DESMARCAR BONO
   const toggleBonoGasolina = async (id, estadoActual) => {
     try {
       setUpdatingId(id);
       const docRef = doc(db, 'inscripciones', id);
       
-      // Actualizar solo el campo bonoCancelado
       await updateDoc(docRef, {
         bonoCancelado: !estadoActual,
-        updatedAt: new Date() // Timestamp de actualización
+        updatedAt: new Date()
       });
-      
-      // El listener en tiempo real actualizará automáticamente la UI
     } catch (error) {
       console.error('Error actualizando estado del bono:', error);
-      alert(`Error al actualizar el estado del bono: ${error.message}`);
+      // Mensaje de error más específico
+      if (error.code === 'permission-denied') {
+        alert('❌ ERROR DE PERMISOS: Reglas de Firebase bloqueando actualización. ¡Contacte al administrador URGENTE!');
+      } else {
+        alert(`❌ ERROR: ${error.message || 'No se pudo actualizar el estado del bono'}`);
+      }
     } finally {
       setUpdatingId(null);
     }
@@ -161,6 +164,31 @@ export default function DashboardPage() {
           <div className="bg-[#25D366]/20 border-l-4 border-[#25D366] p-3 rounded-r">
             <p className="text-white font-bold text-xs md:text-sm text-center">
               ✨ El mensaje incluye emojis y enlace directo de inscripción
+            </p>
+          </div>
+        </div>
+
+        {/* NUEVO: RESUMEN DE BONOS DE GASOLINA */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 md:p-6 mb-6 border border-[#FFD700]">
+          <h2 className="text-xl md:text-2xl font-bold mb-4 text-[#FFD700] text-center">📊 ESTADO DE BONOS DE GASOLINA</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-red-500/20 border-2 border-red-500 rounded-xl p-4 text-center hover:scale-105 transition-transform">
+              <div className="text-5xl md:text-6xl font-bold text-red-400 mb-2">⛽</div>
+              <h3 className="text-lg md:text-xl font-bold text-white mb-1">BONOS PENDIENTES</h3>
+              <p className="text-3xl md:text-4xl font-bold text-red-300">{totalPendientes}</p>
+              <p className="mt-1 text-red-200">Por entregar</p>
+            </div>
+            <div className="bg-green-500/20 border-2 border-green-500 rounded-xl p-4 text-center hover:scale-105 transition-transform">
+              <div className="text-5xl md:text-6xl font-bold text-green-400 mb-2">✅</div>
+              <h3 className="text-lg md:text-xl font-bold text-white mb-1">BONOS ENTREGADOS</h3>
+              <p className="text-3xl md:text-4xl font-bold text-green-300">{totalCancelados}</p>
+              <p className="mt-1 text-green-200">Ya cancelados</p>
+            </div>
+          </div>
+          <div className="mt-4 bg-[#0033A0]/50 border-l-4 border-[#FFD700] p-3 rounded-r">
+            <p className="font-bold text-white text-center">
+              TOTAL BONOS: {totalPendientes + totalCancelados} | 
+              PORCENTAJE ENTREGADO: {totalInscritos > 0 ? Math.round((totalCancelados / totalInscritos) * 100) : 0}%
             </p>
           </div>
         </div>
@@ -276,7 +304,7 @@ export default function DashboardPage() {
                         <button
                           onClick={() => toggleBonoGasolina(ins.id, ins.bonoCancelado)}
                           disabled={updatingId === ins.id}
-                          className={`px-2 py-1 rounded-full font-bold text-xs flex items-center justify-center ${
+                          className={`px-2 py-1 rounded-full font-bold text-xs flex items-center justify-center min-w-22.5 ${
                             ins.bonoCancelado 
                               ? 'bg-green-500 hover:bg-green-600 text-white' 
                               : 'bg-red-500 hover:bg-red-600 text-white'

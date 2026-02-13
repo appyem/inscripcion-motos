@@ -26,7 +26,6 @@ export default function InscripcionPage() {
       const sanitizedValue = value.replace(/[^0-9]/g, '');
       setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     } else if (name === 'placa') {
-      // Solo permite letras y números, convierte a mayúsculas, máximo 5 caracteres
       const sanitizedValue = value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5);
       setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
     } else if (name === 'nombreCompleto') {
@@ -71,7 +70,6 @@ export default function InscripcionPage() {
       setError('LA CÉDULA DEBE TENER ENTRE 6 Y 10 DÍGITOS');
       return false;
     }
-    // VALIDACIÓN CORREGIDA PARA PLACAS COLOMBIANAS: 3 LETRAS + 2 NÚMEROS = 5 CARACTERES EXACTOS
     if (formData.placa.length !== 5) {
       setError('LA PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
       return false;
@@ -83,9 +81,17 @@ export default function InscripcionPage() {
     return true;
   };
 
+  // CORREGIDO: Manejo robusto de errores para Firebase
   const checkDuplicates = async () => {
     try {
-      const cedulaQuery = query(collection(db, 'inscripciones'), where('cedula', '==', formData.cedula));
+      setError('VERIFICANDO DATOS... (NO CIERRES LA PANTALLA)');
+      
+      // Verificar cédula duplicada
+      const cedulaQuery = query(
+        collection(db, 'inscripciones'),
+        where('cedula', '==', formData.cedula)
+      );
+      
       const cedulaSnapshot = await getDocs(cedulaQuery);
       
       if (!cedulaSnapshot.empty) {
@@ -93,7 +99,12 @@ export default function InscripcionPage() {
         return true;
       }
 
-      const placaQuery = query(collection(db, 'inscripciones'), where('placa', '==', formData.placa));
+      // Verificar placa duplicada
+      const placaQuery = query(
+        collection(db, 'inscripciones'),
+        where('placa', '==', formData.placa)
+      );
+      
       const placaSnapshot = await getDocs(placaQuery);
       
       if (!placaSnapshot.empty) {
@@ -101,27 +112,43 @@ export default function InscripcionPage() {
         return true;
       }
 
+      setError(''); // Limpiar mensaje de verificación
       return false;
     } catch (err) {
-      console.error('Error verificando duplicados:', err);
-      setError('ERROR AL VERIFICAR DUPLICADOS. INTENTE NUEVAMENTE');
-      return true;
+      console.error('Error crítico verificando duplicados:', err);
+      
+      // Manejo específico de errores de Firebase
+      if (err.code === 'permission-denied') {
+        setError('❌ ERROR DE SEGURIDAD: Reglas de Firebase bloqueando verificación. Contacte al administrador URGENTE.');
+      } else if (err.code === 'unavailable') {
+        setError('❌ ERROR DE RED: Sin conexión a internet o Firebase no disponible. Verifica tu conexión.');
+      } else if (err.code === 'invalid-argument') {
+        setError('❌ ERROR DE DATOS: Formato inválido en cédula o placa. Usa formato correcto (placa: ABC12).');
+      } else {
+        setError(`❌ ERROR INESPERADO (${err.code || 'SIN CÓDIGO'}): ${err.message || 'Falló la verificación'}`);
+      }
+      
+      return true; // Bloquear inscripción si hay error
     }
   };
 
+  // CORREGIDO: Try-catch global para toda la operación
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
     
-    if (!validateForm()) return;
-    
-    const isDuplicate = await checkDuplicates();
-    if (isDuplicate) return;
-    
-    setIsLoading(true);
-    
     try {
+      // Validación básica del formulario
+      if (!validateForm()) return;
+      
+      // Verificación de duplicados con manejo de errores
+      const isDuplicate = await checkDuplicates();
+      if (isDuplicate) return;
+      
+      setIsLoading(true);
+      
+      // Guardar en Firestore
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         fechaNacimiento: formData.fechaNacimiento,
@@ -133,6 +160,7 @@ export default function InscripcionPage() {
 
       await addDoc(collection(db, 'inscripciones'), inscripcionData);
       
+      // Éxito
       setSuccess(true);
       setFormData({
         nombreCompleto: '',
@@ -143,9 +171,22 @@ export default function InscripcionPage() {
       });
       
       setTimeout(() => setSuccess(false), 8000);
+      
     } catch (err) {
-      console.error('Error guardando inscripción:', err);
-      setError('ERROR AL GUARDAR LA INSCRIPCIÓN. INTENTE NUEVAMENTE');
+      console.error('Error crítico guardando inscripción:', err);
+      
+      // Manejo específico de errores de escritura en Firebase
+      if (err.code === 'permission-denied') {
+        setError('❌ ACCESO DENEGADO: Reglas de Firebase bloqueando escritura. ¡ADMINISTRADOR DEBE REVISAR REGLAS!');
+      } else if (err.code === 'unavailable') {
+        setError('❌ SERVICIO NO DISPONIBLE: Firebase offline o sin conexión. Intenta más tarde.');
+      } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
+        setError('❌ DATOS INVÁLIDOS: Formato incorrecto. Verifica placa (ABC12), cédula y fecha.');
+      } else if (err.code === 'resource-exhausted') {
+        setError('❌ LÍMITE ALCANZADO: Demasiados intentos. Espera 1 minuto e intenta nuevamente.');
+      } else {
+        setError(`❌ ERROR FATAL (${err.code || 'DESCONOCIDO'}): ${err.message || 'No se pudo guardar'}. Contacte al administrador.`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -157,7 +198,6 @@ export default function InscripcionPage() {
         <header className="py-3 px-3 border-b border-[#FFD700] bg-[#002266]/90 backdrop-blur-sm">
           <div className="container mx-auto flex justify-center items-center">
             <div className="flex items-center space-x-2">
-              {/* Logo C 101 diseñado con CSS - Sin dependencia de imagen */}
               <div className="bg-white p-1.5 rounded-full shadow-lg border-2 border-[#FFD700]">
                 <div className="w-8 h-8 bg-[#0033A0] rounded-full flex flex-col items-center justify-center">
                   <span className="font-bold text-white text-base leading-none">C</span>
@@ -178,7 +218,6 @@ export default function InscripcionPage() {
         <main className="container mx-auto px-3 py-3">
           <div className="max-w-md mx-auto">
             <div className="bg-white rounded-2xl shadow-2xl p-4 mb-5 border-4 border-[#FFD700]">
-              {/* Imagen optimizada del candidato con Next.js Image */}
               <div className="mb-4 overflow-hidden rounded-xl shadow-lg border-2 border-[#0033A0] relative h-56 md:h-64">
                 <Image
                   src="/candidato-optimizado.jpg"
@@ -320,7 +359,7 @@ export default function InscripcionPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      PROCESANDO...
+                      {error.includes('VERIFICANDO') ? error : 'PROCESANDO INSCRIPCIÓN...'}
                     </span>
                   ) : (
                     '✅ INSCRIBIR MOTO AHORA ✅'

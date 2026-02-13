@@ -11,6 +11,7 @@ export default function InscripcionPage() {
     nombreCompleto: '',
     fechaNacimiento: '',
     cedula: '',
+    celular: '', // NUEVO CAMPO
     placa: '',
     sector: 'Samaria'
   });
@@ -25,6 +26,9 @@ export default function InscripcionPage() {
     const { name, value } = e.target;
     if (name === 'cedula') {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '') }));
+    } else if (name === 'celular') {
+      // Solo números, máximo 10 dígitos (formato colombiano)
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '').slice(0, 10) }));
     } else if (name === 'placa') {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5) }));
     } else if (name === 'nombreCompleto') {
@@ -51,7 +55,7 @@ export default function InscripcionPage() {
     }
   }, [formData.fechaNacimiento]);
 
-  // Validación del formulario
+  // Validación del formulario CON CELULAR
   const validateForm = () => {
     setError('');
     
@@ -71,6 +75,15 @@ export default function InscripcionPage() {
       setError('CÉDULA DEBE TENER 6-10 DÍGITOS');
       return false;
     }
+    // VALIDACIÓN NUEVA: CELULAR COLOMBIANO
+    if (formData.celular.length !== 10) {
+      setError('CELULAR DEBE TENER 10 DÍGITOS (INICIAR CON 3)');
+      return false;
+    }
+    if (!formData.celular.startsWith('3')) {
+      setError('CELULAR INVÁLIDO: DEBE INICIAR CON 3 (NÚMERO MÓVIL COLOMBIANO)');
+      return false;
+    }
     if (formData.placa.length !== 5) {
       setError('PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
       return false;
@@ -82,12 +95,11 @@ export default function InscripcionPage() {
     return true;
   };
 
-  // Verificación de duplicados MEJORADA (con timeout y fallback)
+  // Verificación de duplicados MEJORADA
   const checkDuplicates = async () => {
     try {
       setError('🔍 Verificando duplicados...');
       
-      // Timeout de 5 segundos para evitar bloqueos
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('TIMEOUT')), 5000)
       );
@@ -121,47 +133,43 @@ export default function InscripcionPage() {
     } catch (err) {
       console.error('Error en verificación:', err);
       
-      // Si hay timeout o error de red, permitir continuar (con advertencia)
       if (err.message === 'TIMEOUT' || err.code === 'unavailable') {
         console.warn('Verificación de duplicados fallida. Permitiendo inscripción...');
         setError('⚠️ Verificación lenta. Continuando con precaución...');
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1s
-        return false; // Permitir continuar
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return false;
       }
       
-      // Otros errores bloquean
       setError(`❌ ERROR: ${err.message || 'Verificación fallida'}`);
       return true;
     }
   };
 
-  // Manejo del submit MEJORADO
+  // Manejo del submit CON CELULAR
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
     
-    // Validación básica
     if (!validateForm()) return;
     
-    // Verificación de duplicados
     const isDuplicate = await checkDuplicates();
     if (isDuplicate && !error.includes('Verificación lenta')) return;
     
     setIsLoading(true);
     
     try {
-      // Preparar datos
+      // Preparar datos CON CELULAR
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         fechaNacimiento: formData.fechaNacimiento,
         cedula: formData.cedula.trim(),
+        celular: formData.celular.trim(), // NUEVO CAMPO
         placa: formData.placa.trim(),
         sector: formData.sector,
-        createdAt: new Date() // Usar timestamp del cliente para evitar problemas
+        createdAt: new Date()
       };
 
-      // Guardar en Firestore
       await addDoc(collection(db, 'inscripciones'), inscripcionData);
       
       // Éxito
@@ -170,21 +178,20 @@ export default function InscripcionPage() {
         nombreCompleto: '',
         fechaNacimiento: '',
         cedula: '',
+        celular: '', // REINICIAR CAMPO
         placa: '',
         sector: 'Samaria'
       });
       
-      // Resetear después de 8 segundos
       setTimeout(() => setSuccess(false), 8000);
       
     } catch (err) {
       console.error('Error guardando:', err);
       
-      // Mensajes de error específicos
       if (err.code === 'permission-denied') {
         setError('❌ ERROR CRÍTICO: Reglas de Firebase bloqueando escritura. Contacte al administrador INMEDIATAMENTE.');
       } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
-        setError('❌ DATOS INVÁLIDOS: Verifica formato de placa (ABC12) y cédula');
+        setError('❌ DATOS INVÁLIDOS: Verifica formato de placa (ABC12), cédula y celular (10 dígitos)');
       } else if (err.code === 'unavailable') {
         setError('❌ SIN CONEXIÓN: Verifica tu internet e intenta nuevamente');
       } else {
@@ -245,7 +252,8 @@ export default function InscripcionPage() {
                   <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
                     • MAYORES DE 18 AÑOS<br/>
-                    • PLACA COLOMBIANA VÁLIDA (3 LETRAS + 2 NÚMEROS)
+                    • PLACA COLOMBIANA VÁLIDA (3 LETRAS + 2 NÚMEROS)<br/>
+                    • CELULAR VÁLIDO PARA CONFIRMACIÓN
                   </p>
                 </div>
               </div>
@@ -260,6 +268,7 @@ export default function InscripcionPage() {
                 <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
                   <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
                   <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño!</p>
+                  <p className="mt-1 text-[10px] font-bold">📱 Te contactaremos al celular proporcionado</p>
                   
                   <button
                     onClick={() => {
@@ -316,6 +325,22 @@ export default function InscripcionPage() {
                   />
                 </div>
 
+                {/* NUEVO CAMPO: CELULAR */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NÚMERO DE CELULAR *</label>
+                  <input
+                    type="tel"
+                    name="celular"
+                    value={formData.celular}
+                    onChange={handleInputChange}
+                    required
+                    maxLength="10"
+                    className="w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50"
+                    placeholder="EJ: 3001234567"
+                  />
+                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA MOTO *</label>
                   <input
@@ -370,7 +395,8 @@ export default function InscripcionPage() {
 
               <div className="mt-4 pt-3 border-t border-[#0033A0] text-center bg-blue-50 p-2.5 rounded-b-xl">
                 <p className="font-bold text-[#0033A0] text-xs">✅ GRATIS Y SEGURO</p>
-                <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 CONFIRMACIÓN INMEDIATA</p>
+                <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 CONFIRMACIÓN POR CELULAR INMEDIATA</p>
+                <p className="mt-1 text-[#0033A0] font-bold text-[10px]">VOTA EN EL TARJETÓN: LETRA C Y NÚMERO 101</p>
               </div>
             </div>
 

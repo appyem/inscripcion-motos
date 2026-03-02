@@ -2,9 +2,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 
 export default function InscripcionPage() {
@@ -17,29 +16,28 @@ export default function InscripcionPage() {
     placa: '',
     municipio: 'Manizales'
   });
-  const [soatFile, setSoatFile] = useState(null);
+  const [soatBase64, setSoatBase64] = useState(null); // NUEVO: Base64 en lugar de archivo
   const [soatPreview, setSoatPreview] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadingSoat, setUploadingSoat] = useState(false);
   
   // NUEVO: Paleta de colores mejorada del Partido de la U
   const coloresU = {
-    rojoPrincipal: '#DA291C',      // Rojo oficial del Partido de la U
-    rojoOscuro: '#B01E16',         // Rojo oscuro para gradientes
-    rojoClaro: '#E84232',          // Rojo claro para hover y acentos
-    blanco: '#FFFFFF',             // Blanco puro
-    blancoSuave: '#F8F9FA',        // Blanco suave para fondos
-    grisClaro: '#F1F3F5',          // Gris claro para inputs
-    grisMedio: '#6C757D',          // Gris medio para texto secundario
-    dorado: '#FFD700',             // Dorado para acentos especiales
-    doradoOscuro: '#FFC107',       // Dorado oscuro para hover
-    negro: '#212529',              // Negro para texto
-    rojoHover: '#C4261A',          // Rojo para estados hover
-    rojoFondo: '#FFF5F5',          // Rojo muy claro para fondos
-    borderGris: '#DEE2E6'          // Gris para bordes
+    rojoPrincipal: '#DA291C',
+    rojoOscuro: '#B01E16',
+    rojoClaro: '#E84232',
+    blanco: '#FFFFFF',
+    blancoSuave: '#F8F9FA',
+    grisClaro: '#F1F3F5',
+    grisMedio: '#6C757D',
+    dorado: '#FFD700',
+    doradoOscuro: '#FFC107',
+    negro: '#212529',
+    rojoHover: '#C4261A',
+    rojoFondo: '#FFF5F5',
+    borderGris: '#DEE2E6'
   };
   
   // Municipios de Caldas agrupados por zonas
@@ -70,8 +68,18 @@ export default function InscripcionPage() {
     }
   };
 
+  // NUEVO: Convertir imagen a Base64
+  const convertToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   // Manejar cambio de archivo SOAT
-  const handleSoatChange = (e) => {
+  const handleSoatChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
       // Validar tipo de archivo
@@ -80,20 +88,23 @@ export default function InscripcionPage() {
         return;
       }
       
-      // Validar tamaño (máximo 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setError('LA IMAGEN DEL SOAT NO PUEDE SUPERAR 5MB');
+      // Validar tamaño (máximo 1MB para Firestore)
+      if (file.size > 1 * 1024 * 1024) {
+        setError('LA IMAGEN DEL SOAT NO PUEDE SUPERAR 1MB (LÍMITE DE FIRESTORE)');
         return;
       }
       
-      setSoatFile(file);
-      
-      // Crear preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSoatPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        // Convertir a Base64
+        const base64 = await convertToBase64(file);
+        setSoatBase64(base64);
+        
+        // Crear preview
+        setSoatPreview(base64);
+      } catch (err) {
+        console.error('Error convirtiendo imagen:', err);
+        setError('ERROR AL PROCESAR LA IMAGEN');
+      }
     }
   };
 
@@ -121,7 +132,7 @@ export default function InscripcionPage() {
       setError('EL NOMBRE DEL LÍDER ES REQUERIDO');
       return false;
     }
-    if (!soatFile) {
+    if (!soatBase64) {
       setError('DEBES SUBIR LA IMAGEN DEL SOAT VIGENTE');
       return false;
     }
@@ -182,32 +193,7 @@ export default function InscripcionPage() {
     }
   };
 
-  // Subir imagen SOAT a Firebase Storage
-  const uploadSoatImage = async (file) => {
-    try {
-      setUploadingSoat(true);
-      
-      // Crear referencia única para la imagen
-      const timestamp = Date.now();
-      const fileName = `${formData.cedula}_${timestamp}_${file.name}`;
-      const storageRef = ref(storage, `soat/${fileName}`);
-      
-      // Subir archivo
-      await uploadBytes(storageRef, file);
-      
-      // Obtener URL pública
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      return downloadURL;
-    } catch (err) {
-      console.error('Error subiendo SOAT:', err);
-      throw new Error('ERROR AL SUBIR LA IMAGEN DEL SOAT');
-    } finally {
-      setUploadingSoat(false);
-    }
-  };
-
-  // Manejo del submit
+  // Manejo del submit SIN STORAGE
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -234,10 +220,7 @@ export default function InscripcionPage() {
       
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Subir imagen SOAT primero
-      const soatUrl = await uploadSoatImage(soatFile);
-      
-      // Preparar datos
+      // Preparar datos con Base64
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         cedula: formData.cedula.trim(),
@@ -246,7 +229,7 @@ export default function InscripcionPage() {
         tipoVehiculo: formData.tipoVehiculo,
         placa: formData.placa.trim(),
         municipio: formData.municipio,
-        soatUrl: soatUrl,
+        soatBase64: soatBase64, // GUARDAR COMO BASE64
         createdAt: new Date()
       };
 
@@ -264,7 +247,7 @@ export default function InscripcionPage() {
         placa: '',
         municipio: 'Manizales'
       });
-      setSoatFile(null);
+      setSoatBase64(null);
       setSoatPreview(null);
       
       setTimeout(() => setSuccess(false), 8000);
@@ -275,7 +258,7 @@ export default function InscripcionPage() {
       if (err.code === 'permission-denied') {
         setError('❌ ERROR CRÍTICO: Reglas de Firebase bloqueando escritura. Contacte al administrador INMEDIATAMENTE.');
       } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
-        setError('❌ DATOS INVÁLIDOS: Verifica todos los campos');
+        setError('❌ DATOS INVÁLIDOS: Verifica todos los campos. La imagen debe ser menor a 1MB.');
       } else if (err.code === 'unavailable') {
         setError('❌ SIN CONEXIÓN: Verifica tu internet e intenta nuevamente');
       } else {
@@ -284,7 +267,6 @@ export default function InscripcionPage() {
     } finally {
       setIsLoading(false);
       setIsSubmitting(false);
-      setUploadingSoat(false);
     }
   };
 
@@ -337,8 +319,8 @@ export default function InscripcionPage() {
                   <p className="font-bold text-red-800 text-sm">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-1 text-xs">
                     • SOAT VIGENTE OBLIGATORIO<br/>
-                    • CÉDULA Y CELULAR VÁLIDOS<br/>
-                    • REGISTRO ILIMITADO
+                    • IMAGEN MÁXIMO 1MB<br/>
+                    • CÉDULA Y CELULAR VÁLIDOS
                   </p>
                 </div>
               </div>
@@ -437,7 +419,7 @@ export default function InscripcionPage() {
                   <p className="text-[10px] text-[#DA291C] mt-1 font-bold">EL LÍDER QUE TE INVITA A PARTICIPAR</p>
                 </div>
 
-                {/* NUEVO CAMPO: IMAGEN SOAT */}
+                {/* NUEVO CAMPO: IMAGEN SOAT COMO BASE64 */}
                 <div>
                   <label className="block text-xs font-bold text-[#DA291C] mb-1">SOAT VIGENTE (IMAGEN) *</label>
                   <div className="border-2 border-dashed border-[#DA291C] rounded-lg p-5 bg-white text-center hover:border-[#FFD700] hover:shadow-lg transition-all">
@@ -465,12 +447,12 @@ export default function InscripcionPage() {
                               className="object-contain rounded-lg border-3 border-[#DA291C] shadow-lg"
                             />
                           </div>
-                          <p className="text-[#DA291C] text-sm font-bold">✅ IMAGEN CARGADA</p>
+                          <p className="text-[#DA291C] text-sm font-bold">✅ IMAGEN CARGADA (BASE64)</p>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.preventDefault();
-                              setSoatFile(null);
+                              setSoatBase64(null);
                               setSoatPreview(null);
                             }}
                             className="text-xs text-[#DA291C] hover:underline font-bold"
@@ -484,12 +466,12 @@ export default function InscripcionPage() {
                             <span className="text-4xl">📄</span>
                           </div>
                           <p className="text-[#DA291C] text-sm font-bold">SUBIR IMAGEN DEL SOAT</p>
-                          <p className="text-xs text-[#DA291C]/70">Toca para seleccionar imagen (máx. 5MB)</p>
+                          <p className="text-xs text-[#DA291C]/70">Toca para seleccionar imagen (máx. 1MB)</p>
                         </div>
                       )}
                     </label>
                   </div>
-                  <p className="text-[10px] text-[#DA291C] mt-2 font-bold">OBLIGATORIO - SOAT VIGENTE DEL VEHÍCULO</p>
+                  <p className="text-[10px] text-[#DA291C] mt-2 font-bold">OBLIGATORIO - SOAT VIGENTE (GUARDADO COMO BASE64)</p>
                 </div>
 
                 {/* Tipo de vehículo */}
@@ -553,18 +535,18 @@ export default function InscripcionPage() {
 
                 <button
                   type="submit"
-                  disabled={isLoading || isSubmitting || uploadingSoat}
+                  disabled={isLoading || isSubmitting}
                   className={`w-full bg-[#DA291C] hover:bg-[#E84232] text-white font-bold text-base py-3.5 px-6 rounded-lg transition-all duration-300 shadow-2xl border-2 border-[#FFD700] ${
-                    (isLoading || isSubmitting || uploadingSoat) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-2xl hover:scale-105'
+                    (isLoading || isSubmitting) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-2xl hover:scale-105'
                   }`}
                 >
-                  {isLoading || isSubmitting || uploadingSoat ? (
+                  {isLoading || isSubmitting ? (
                     <span className="flex items-center justify-center">
                       <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      {uploadingSoat ? 'SUBIENDO SOAT...' : error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
+                      {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
                     </span>
                   ) : (
                     '✅ INSCRIBIR VEHÍCULO AHORA ✅'
@@ -574,7 +556,7 @@ export default function InscripcionPage() {
 
               <div className="mt-5 pt-4 border-t border-[#DA291C] text-center bg-[#FFF5F5] p-3.5 rounded-b-xl">
                 <p className="font-bold text-[#DA291C] text-sm">✅ REGISTRO ILIMITADO Y GRATUITO</p>
-                <p className="mt-1 font-bold text-[#DA291C] text-sm">📄 SOAT VIGENTE OBLIGATORIO</p>
+                <p className="mt-1 font-bold text-[#DA291C] text-sm">📄 SOAT VIGENTE OBLIGATORIO (MÁX. 1MB)</p>
                 <p className="mt-1 text-[#DA291C] font-bold text-xs">VOTA EN LA TARJETA: U99</p>
               </div>
             </div>

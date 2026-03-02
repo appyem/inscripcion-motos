@@ -288,6 +288,7 @@ export default function InscripcionPage() {
         <main className="container mx-auto px-3 py-3">
           <div className="max-w-md mx-auto">
             <div className="bg-[#FFF9F0] rounded-2xl shadow-2xl p-5 mb-5 border-4 border-[#C87A5D]">
+              {/* IMAGEN SIN EL ÓVALO DE TEXTO - SOLO LA IMAGEN CENTRADA */}
               <div className="mb-5 overflow-hidden rounded-xl shadow-2xl border-3 border-[#E8C999] relative h-64 md:h-72">
                 <Image
                   src="/maria-irma-nueva.jpg"
@@ -296,10 +297,7 @@ export default function InscripcionPage() {
                   className="object-cover object-center"
                   loading="lazy"
                 />
-                <div className="absolute bottom-3 left-1/2 transform -translate-x-1/2 bg-[#C87A5D] bg-opacity-90 text-[#F8F0E3] px-4 py-2 rounded-full border-2 border-[#E8C999] backdrop-blur-sm z-10 shadow-lg">
-                  <span className="font-bold text-base">MARÍA IRMA</span>
-                  <span className="ml-2 bg-[#E8C999] text-[#4A3C30] font-bold px-3 py-1 rounded-full text-xs">TARJETA U99</span>
-                </div>
+                {/* ELIMINADO: El óvalo con "MARÍA IRMA TARJETA U99" que tapaba la imagen */}
               </div>
               
               <div className="text-center mb-5">

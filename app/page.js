@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { db } from '@/lib/firebase';
 import { 
   collection, 
@@ -9,7 +10,7 @@ import {
   orderBy, 
   onSnapshot 
 } from 'firebase/firestore';
-import Image from 'next/image';
+import * as XLSX from 'xlsx';
 
 export default function DashboardPage() {
   const [inscripciones, setInscripciones] = useState([]);
@@ -20,9 +21,10 @@ export default function DashboardPage() {
   const [filtroTipoVehiculo, setFiltroTipoVehiculo] = useState('todos');
   const [filtroLider, setFiltroLider] = useState('');
   const [totalInscritos, setTotalInscritos] = useState(0);
-  const formUrl = typeof window !== 'undefined' ? `${window.location.origin}/inscripcion` : '';
+  const [formUrl, setFormUrl] = useState(typeof window !== 'undefined' ? `${window.location.origin}/inscripcion` : '');
+  const [imagenModal, setImagenModal] = useState(null); // NUEVO: Modal para ver imagen
   
-  // NUEVO: Municipios de Caldas agrupados por zonas
+  // Municipios de Caldas agrupados por zonas
   const municipiosPorZona = {
     'todos': 'Todos los Municipios',
     'Centro Sur': ['Manizales', 'Chinchiná', 'Neira', 'Palestina', 'Villamaría'],
@@ -33,14 +35,10 @@ export default function DashboardPage() {
     'Magdalena Caldense': ['La Dorada', 'Norcasia', 'Victoria']
   };
   
-  // Obtener todos los municipios en un solo array para filtros
   const todosMunicipios = ['todos', ...Object.values(municipiosPorZona).flat().filter(m => m !== 'todos')];
-  
-  // Tipos de vehículo
   const tiposVehiculo = ['todos', 'moto', 'vehiculo', 'jeep'];
 
   useEffect(() => {
-    // USAR LISTENER EN TIEMPO REAL
     const q = query(collection(db, 'inscripciones'), orderBy('createdAt', 'desc'));
     
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -91,7 +89,15 @@ export default function DashboardPage() {
     })
     .sort((a, b) => b.count - a.count);
 
-  // NUEVO: Estadísticas por líder (top 5)
+  // NUEVO: Estadísticas por municipio (individual)
+  const estadisticasMunicipios = [...new Set(inscripciones.map(ins => ins.municipio))]
+    .map(municipio => {
+      const count = inscripciones.filter(ins => ins.municipio === municipio).length;
+      return { municipio, count };
+    })
+    .sort((a, b) => b.count - a.count);
+
+  // NUEVO: Estadísticas por líder (top 10)
   const estadisticasLideres = [...inscripciones.reduce((acc, ins) => {
     const lider = ins.lider || 'SIN LÍDER';
     if (!acc.has(lider)) {
@@ -101,7 +107,7 @@ export default function DashboardPage() {
     return acc;
   }, new Map()).values()]
     .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+    .slice(0, 10);
 
   // Filtrar inscripciones
   const inscripcionesFiltradas = inscripciones.filter(ins => {
@@ -125,17 +131,101 @@ export default function DashboardPage() {
     window.open(whatsappUrl, '_blank');
   };
 
-  // NUEVO: Función para ver imagen SOAT en nueva pestaña
-  const verSoat = (soatUrl) => {
-    if (soatUrl) {
-      window.open(soatUrl, '_blank');
+  // NUEVO: Función para ver imagen SOAT (Base64)
+  const verSoat = (soatBase64) => {
+    if (soatBase64) {
+      setImagenModal(soatBase64);
     } else {
       alert('No hay imagen de SOAT disponible para esta inscripción');
     }
   };
 
+  // NUEVO: Función para cerrar modal
+  const cerrarModal = () => {
+    setImagenModal(null);
+  };
+
+  // NUEVO: Función para exportar a Excel
+  const exportarExcel = () => {
+    if (inscripciones.length === 0) {
+      alert('No hay datos para exportar');
+      return;
+    }
+
+    // Preparar datos para Excel
+    const datosExcel = inscripciones.map(ins => ({
+      'Fecha/Hora': ins.fechaFormateada,
+      'Nombre Completo': ins.nombreCompleto,
+      'Cédula': ins.cedula,
+      'Celular': ins.celular,
+      'Líder': ins.lider || 'SIN LÍDER',
+      'Tipo de Vehículo': ins.tipoVehiculo === 'moto' ? 'MOTO' : 
+                         ins.tipoVehiculo === 'vehiculo' ? 'VEHÍCULO PARTICULAR' : 'JEEP/4X4',
+      'Placa': ins.placa,
+      'Municipio': ins.municipio,
+      'SOAT': ins.soatBase64 ? 'IMAGEN DISPONIBLE' : 'NO DISPONIBLE'
+    }));
+
+    // Crear hoja de trabajo
+    const ws = XLSX.utils.json_to_sheet(datosExcel);
+    
+    // Ajustar ancho de columnas
+    const wscols = [
+      {wch: 20}, // Fecha/Hora
+      {wch: 30}, // Nombre Completo
+      {wch: 15}, // Cédula
+      {wch: 15}, // Celular
+      {wch: 25}, // Líder
+      {wch: 20}, // Tipo de Vehículo
+      {wch: 12}, // Placa
+      {wch: 20}, // Municipio
+      {wch: 18}  // SOAT
+    ];
+    ws['!cols'] = wscols;
+
+    // Crear libro de trabajo
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inscripciones');
+
+    // Generar archivo Excel
+    const fecha = new Date().toISOString().split('T')[0];
+    XLSX.writeFile(wb, `Inscripciones_Maria_Irma_U99_${fecha}.xlsx`);
+    
+    // Alerta de éxito
+    alert(`✅ ¡Exportación exitosa!\n\nSe han exportado ${inscripciones.length} registros a Excel.`);
+  };
+
   return (
     <div className="min-h-screen bg-linear-to-b from-[#DA291C] via-[#B01E16] to-[#8B1712] text-white relative">
+      {/* Modal para ver imagen SOAT */}
+      {imagenModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
+          onClick={cerrarModal}
+        >
+          <div className="bg-white rounded-2xl max-w-4xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-[#DA291C]">
+              <h3 className="text-xl font-bold text-[#DA291C]">IMAGEN SOAT</h3>
+              <button 
+                onClick={cerrarModal}
+                className="bg-[#DA291C] text-white px-4 py-2 rounded-lg hover:bg-[#B01E16] transition-all"
+              >
+                ✕ CERRAR
+              </button>
+            </div>
+            <div className="p-4">
+              <Image 
+                src={imagenModal} 
+                alt="SOAT"
+                width={800}
+                height={600}
+                className="max-w-full max-h-[70vh] object-contain rounded-lg border-4 border-[#FFD700]"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="bg-[#B01E16]/95 shadow-lg border-b-2 border-white">
         <div className="container mx-auto px-4 py-4 md:py-5 flex flex-col md:flex-row justify-between items-center">
           <div className="flex items-center space-x-3 md:space-x-4 mb-3 md:mb-0">
@@ -168,7 +258,7 @@ export default function DashboardPage() {
             <p className="text-white text-base md:text-lg font-mono break-all text-center">{formUrl || 'Cargando URL...'}</p>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
             <button
               onClick={copyToClipboard}
               className="w-full bg-[#FFD700] hover:bg-[#FFC107] text-[#DA291C] font-bold py-2.5 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
@@ -182,6 +272,14 @@ export default function DashboardPage() {
             >
               <span className="mr-2 text-2xl">📱</span> COMPARTIR POR WHATSAPP
             </button>
+
+            {/* NUEVO: Botón Exportar Excel */}
+            <button
+              onClick={exportarExcel}
+              className="w-full bg-[#1E88E5] hover:bg-[#1565C0] text-white font-bold py-2.5 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
+            >
+              <span className="mr-2 text-2xl">📊</span> EXPORTAR A EXCEL
+            </button>
           </div>
           
           <div className="bg-[#25D366]/20 border-l-4 border-[#25D366] p-2.5 rounded-r">
@@ -192,7 +290,7 @@ export default function DashboardPage() {
         </div>
 
         {/* NUEVO: RESUMEN DE ESTADÍSTICAS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-5">
           {/* Estadísticas por Tipo de Vehículo */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#DA291C]">
             <h2 className="text-lg md:text-xl font-bold mb-3 text-[#FFD700] text-center">📊 POR TIPO DE VEHÍCULO</h2>
@@ -209,7 +307,7 @@ export default function DashboardPage() {
           {/* Estadísticas por Zona */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#DA291C]">
             <h2 className="text-lg md:text-xl font-bold mb-3 text-[#FFD700] text-center">🗺️ POR ZONA DE CALDAS</h2>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
               {estadisticasZonas.map(({ zona, count }) => (
                 <div key={zona} className="flex justify-between items-center p-2 bg-[#DA291C]/20 rounded-lg">
                   <span className="font-bold text-white text-xs">{zona}</span>
@@ -219,14 +317,30 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Estadísticas por Líder (Top 5) */}
+          {/* NUEVO: Estadísticas por Municipio */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#DA291C]">
-            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#FFD700] text-center">👥 TOP LÍDERES</h2>
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#FFD700] text-center">🏙️ TOP 10 MUNICIPIOS</h2>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+              {estadisticasMunicipios.slice(0, 10).map(({ municipio, count }) => (
+                <div key={municipio} className="flex justify-between items-center p-2 bg-[#DA291C]/20 rounded-lg">
+                  <span className="font-bold text-white text-[10px] truncate max-w-20">{municipio}</span>
+                  <span className="text-xl font-bold text-[#FFD700]">{count}</span>
+                </div>
+              ))}
+              {estadisticasMunicipios.length === 0 && (
+                <p className="text-center text-white/70 text-sm">Sin datos aún</p>
+              )}
+            </div>
+          </div>
+
+          {/* Estadísticas por Líder (Top 10) */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#DA291C]">
+            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#FFD700] text-center">👥 TOP 10 LÍDERES</h2>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
               {estadisticasLideres.map(({ lider, count }, index) => (
                 <div key={lider} className="flex justify-between items-center p-2 bg-[#DA291C]/20 rounded-lg">
                   <div>
-                    <span className="font-bold text-white text-xs">{index + 1}. {lider}</span>
+                    <span className="font-bold text-white text-[10px] truncate max-w-20">{index + 1}. {lider}</span>
                   </div>
                   <span className="text-xl font-bold text-[#FFD700]">{count}</span>
                 </div>
@@ -366,16 +480,16 @@ export default function DashboardPage() {
                       <td className="p-2 md:p-3 font-bold text-xs md:text-sm">{ins.municipio}</td>
                       <td className="p-2 md:p-3 text-center">
                         <button
-                          onClick={() => verSoat(ins.soatUrl)}
-                          disabled={!ins.soatUrl}
+                          onClick={() => verSoat(ins.soatBase64)}
+                          disabled={!ins.soatBase64}
                           className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                            ins.soatUrl 
+                            ins.soatBase64 
                               ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30' 
                               : 'bg-red-500/20 text-red-300 cursor-not-allowed'
                           } transition-all`}
-                          title={ins.soatUrl ? 'Ver imagen SOAT' : 'SOAT no disponible'}
+                          title={ins.soatBase64 ? 'Ver imagen SOAT' : 'SOAT no disponible'}
                         >
-                          {ins.soatUrl ? '📄 VER' : '❌ SIN SOAT'}
+                          {ins.soatBase64 ? '🖼️ VER' : '❌ SIN SOAT'}
                         </button>
                       </td>
                     </tr>

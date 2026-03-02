@@ -12,18 +12,31 @@ export default function InscripcionPage() {
     fechaNacimiento: '',
     cedula: '',
     celular: '',
+    tipoVehiculo: 'moto', // NUEVO: tipo de vehículo (moto, vehiculo, jeep)
     placa: '',
-    sector: 'Samaria'
+    municipio: 'Manizales' // NUEVO: municipios de Caldas
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [edadValida, setEdadValida] = useState(true);
-  const [totalInscritos, setTotalInscritos] = useState(0); // NUEVO: Contador de inscritos
-  const [isLoadingCount, setIsLoadingCount] = useState(true); // NUEVO: Loading del contador
-  const LIMITE_MOTOS = 150; // NUEVO: Límite de 150 motos
-  const sectores = ['Samaria', 'San Luis', 'Morritos', 'Verso', 'Soledad', 'Paila', 'El Pintado', 'Otro'];
+  const [totalInscritos, setTotalInscritos] = useState(0);
+  const [isLoadingCount, setIsLoadingCount] = useState(true);
+  const LIMITE_INSCRIPCIONES = 150;
+  
+  // NUEVO: Municipios de Caldas agrupados por zonas
+  const municipiosPorZona = {
+    'Centro Sur': ['Manizales', 'Chinchiná', 'Neira', 'Palestina', 'Villamaría'],
+    'Alto Occidente': ['Filadelfia', 'La Merced', 'Marmato', 'Riosucio', 'Supía'],
+    'Occidente': ['Anserma', 'Belalcázar', 'Risaralda', 'San José', 'Viterbo'],
+    'Norte': ['Aguadas', 'Aranzazu', 'Pácora', 'Salamina'],
+    'Oriente': ['Manzanares', 'Marquetalia', 'Marulanda', 'Pensilvania', 'Samaná'],
+    'Magdalena Caldense': ['La Dorada', 'Norcasia', 'Victoria']
+  };
+
+  // Obtener todos los municipios en un solo array
+  const todosMunicipios = Object.values(municipiosPorZona).flat();
 
   // Cargar el total de inscritos al inicio
   useEffect(() => {
@@ -41,7 +54,7 @@ export default function InscripcionPage() {
     cargarTotalInscritos();
   }, []);
 
-  // Convertir texto a mayúsculas automáticamente
+  // Convertir texto a mayúsculas automáticamente (SOLO para nombre y placa)
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (name === 'cedula') {
@@ -49,7 +62,8 @@ export default function InscripcionPage() {
     } else if (name === 'celular') {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '').slice(0, 10) }));
     } else if (name === 'placa') {
-      setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5) }));
+      // NUEVO: Permitir cualquier formato de placa (sin restricción de 5 caracteres)
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase() }));
     } else if (name === 'nombreCompleto') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
     } else {
@@ -74,7 +88,7 @@ export default function InscripcionPage() {
     }
   }, [formData.fechaNacimiento]);
 
-  // Validación del formulario CON CELULAR
+  // Validación del formulario
   const validateForm = () => {
     setError('');
     
@@ -102,18 +116,14 @@ export default function InscripcionPage() {
       setError('CELULAR INVÁLIDO: DEBE INICIAR CON 3 (NÚMERO MÓVIL COLOMBIANO)');
       return false;
     }
-    if (formData.placa.length !== 5) {
-      setError('PLACA DEBE TENER EXACTAMENTE 5 CARACTERES');
-      return false;
-    }
-    if (!/^[A-Z]{3}[0-9]{2}$/.test(formData.placa)) {
-      setError('FORMATO PLACA: 3 LETRAS + 2 NÚMEROS (EJ: ABC12)');
+    if (formData.placa.length < 5) {
+      setError('PLACA DEBE TENER AL MENOS 5 CARACTERES');
       return false;
     }
     return true;
   };
 
-  // Verificación de duplicados MEJORADA CON PROTECCIÓN EXTRA
+  // Verificación de duplicados MEJORADA
   const checkDuplicates = async () => {
     try {
       setError('🔍 Verificando duplicados...');
@@ -163,13 +173,13 @@ export default function InscripcionPage() {
     }
   };
 
-  // Manejo del submit CON PROTECCIÓN ANTI-DUPLICADOS Y LÍMITE DE MOTOS
+  // Manejo del submit CON PROTECCIÓN ANTI-DUPLICADOS Y LÍMITE
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     // VERIFICACIÓN DE LÍMITE ANTES DE PROCESAR
-    if (totalInscritos >= LIMITE_MOTOS) {
-      setError('🚨 ¡CUPOS AGOTADOS! Ya se alcanzó el límite máximo de 150 motos.');
+    if (totalInscritos >= LIMITE_INSCRIPCIONES) {
+      setError('🚨 ¡CUPOS AGOTADOS! Ya se alcanzó el límite máximo de inscripciones.');
       return;
     }
     
@@ -207,8 +217,9 @@ export default function InscripcionPage() {
         fechaNacimiento: formData.fechaNacimiento,
         cedula: formData.cedula.trim(),
         celular: formData.celular.trim(),
+        tipoVehiculo: formData.tipoVehiculo, // NUEVO: tipo de vehículo
         placa: formData.placa.trim(),
-        sector: formData.sector,
+        municipio: formData.municipio, // NUEVO: municipio
         createdAt: new Date()
       };
 
@@ -225,8 +236,9 @@ export default function InscripcionPage() {
         fechaNacimiento: '',
         cedula: '',
         celular: '',
+        tipoVehiculo: 'moto',
         placa: '',
-        sector: 'Samaria'
+        municipio: 'Manizales'
       });
       
       setTimeout(() => setSuccess(false), 8000);
@@ -237,7 +249,7 @@ export default function InscripcionPage() {
       if (err.code === 'permission-denied') {
         setError('❌ ERROR CRÍTICO: Reglas de Firebase bloqueando escritura. Contacte al administrador INMEDIATAMENTE.');
       } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
-        setError('❌ DATOS INVÁLIDOS: Verifica formato de placa (ABC12), cédula y celular (10 dígitos)');
+        setError('❌ DATOS INVÁLIDOS: Verifica todos los campos');
       } else if (err.code === 'unavailable') {
         setError('❌ SIN CONEXIÓN: Verifica tu internet e intenta nuevamente');
       } else {
@@ -250,20 +262,20 @@ export default function InscripcionPage() {
     }
   };
 
-  // NUEVO: Componente de mensaje de cupos agotados
+  // Componente de mensaje de cupos agotados
   const CuposAgotadosMessage = () => (
     <div className="bg-linear-to-r from-red-500 to-red-700 rounded-2xl p-6 text-center shadow-2xl border-4 border-yellow-400 animate-pulse">
       <div className="text-6xl mb-3">🚨</div>
       <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">¡CUPOS AGOTADOS! 🎯</h2>
       <p className="text-lg md:text-xl font-bold text-yellow-200 mb-4">
-        Hemos alcanzado el límite máximo de <span className="text-white">{LIMITE_MOTOS} motos</span> para el recibimiento
+        Hemos alcanzado el límite máximo de <span className="text-white">{LIMITE_INSCRIPCIONES} inscripciones</span>
       </p>
       <div className="bg-white/20 rounded-lg p-4 mb-4">
         <p className="text-white text-sm md:text-base mb-3">
           🙏 ¡GRACIAS POR TU INTERÉS EN ACOMPAÑAR A JUAN MANUEL LONDOÑO C101!
         </p>
         <p className="text-yellow-100 font-bold text-sm md:text-base">
-          🚌 Para acompañarnos, pregunta por los vehículos que tendremos disponibles en todo el municipio y corregimientos
+          🚌 Para acompañarnos, pregunta por los vehículos que tendremos disponibles en todo Caldas
         </p>
       </div>
       <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
@@ -289,26 +301,26 @@ export default function InscripcionPage() {
     </div>
   );
 
-  // NUEVO: Componente de contador de cupos
+  // Componente de contador de cupos
   const ContadorCupos = () => (
     <div className="bg-linear-to-r from-blue-600 to-blue-800 rounded-xl p-3 text-center mb-4 border-2 border-yellow-400">
       <div className="flex items-center justify-center space-x-2">
-        <span className="text-3xl">🏍️</span>
+        <span className="text-3xl">🚗</span>
         <div>
-          <p className="text-xs font-bold text-yellow-200">MOTOS INSCRITAS</p>
+          <p className="text-xs font-bold text-yellow-200">INSCRIPCIONES</p>
           <p className="text-2xl md:text-3xl font-bold text-white">
-            {isLoadingCount ? '...' : totalInscritos} / {LIMITE_MOTOS}
+            {isLoadingCount ? '...' : totalInscritos} / {LIMITE_INSCRIPCIONES}
           </p>
           <div className="mt-2 bg-white/20 rounded-full h-2 overflow-hidden">
             <div 
               className="bg-yellow-400 h-full transition-all duration-500"
-              style={{ width: `${Math.min((totalInscritos / LIMITE_MOTOS) * 100, 100)}%` }}
+              style={{ width: `${Math.min((totalInscritos / LIMITE_INSCRIPCIONES) * 100, 100)}%` }}
             ></div>
           </div>
           <p className="text-xs text-yellow-200 mt-1">
-            {totalInscritos >= LIMITE_MOTOS 
+            {totalInscritos >= LIMITE_INSCRIPCIONES 
               ? '¡CUPOS COMPLETOS!' 
-              : `${LIMITE_MOTOS - totalInscritos} cupos disponibles`}
+              : `${LIMITE_INSCRIPCIONES - totalInscritos} cupos disponibles`}
           </p>
         </div>
       </div>
@@ -332,8 +344,8 @@ export default function InscripcionPage() {
               </div>
             </div>
             <div className="ml-2.5 text-center">
-              <h1 className="text-lg font-bold">PARTIDO CONSERVADOR</h1>
-              <p className="text-xs mt-0.5">¡Por un Colombia mejor!</p>
+              <h1 className="text-lg font-bold">PARTIDO CONSERVADOR CALDAS</h1>
+              <p className="text-xs mt-0.5">¡Por un Caldas mejor!</p>
             </div>
           </div>
         </header>
@@ -356,26 +368,26 @@ export default function InscripcionPage() {
               </div>
               
               <div className="text-center mb-4">
-                <h2 className="text-xl md:text-2xl font-bold text-[#0033A0] mb-2">INSCRIPCIÓN DE MOTOS</h2>
+                <h2 className="text-xl md:text-2xl font-bold text-[#0033A0] mb-2">INSCRIPCIÓN DE VEHÍCULOS</h2>
                 <div className="bg-[#0033A0] text-white py-1.5 px-3 rounded-full inline-block mb-2 border-2 border-[#FFD700]">
-                  <p className="text-sm font-bold">RECIBIMIENTO A JUAN MANUEL LONDOÑO</p>
-                  <p className="text-xs">Candidato a la Cámara - Tarjetón C 101</p>
+                  <p className="text-sm font-bold">RECIBIMIENTO EN CALDAS</p>
+                  <p className="text-xs">Juan Manuel Londoño - Candidato a la Cámara C 101</p>
                 </div>
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
                   <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
                     • MAYORES DE 18 AÑOS<br/>
-                    • PLACA COLOMBIANA VÁLIDA (3 LETRAS + 2 NÚMEROS)<br/>
-                    • CELULAR VÁLIDO PARA CONFIRMACIÓN
+                    • CÉDULA Y CELULAR VÁLIDOS<br/>
+                    • PLACA DEL VEHÍCULO
                   </p>
                 </div>
               </div>
 
-              {/* NUEVO: Mostrar contador de cupos */}
+              {/* Contador de cupos */}
               <ContadorCupos />
 
-              {/* NUEVO: Mostrar mensaje de cupos agotados si se alcanzó el límite */}
-              {totalInscritos >= LIMITE_MOTOS ? (
+              {/* Mostrar mensaje de cupos agotados si se alcanzó el límite */}
+              {totalInscritos >= LIMITE_INSCRIPCIONES ? (
                 <CuposAgotadosMessage />
               ) : (
                 <>
@@ -388,12 +400,12 @@ export default function InscripcionPage() {
                   {success && (
                     <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
                       <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
-                      <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño!</p>
+                      <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño en Caldas!</p>
                       <p className="mt-1 text-[10px] font-bold">📱 Te contactaremos al celular proporcionado</p>
                       
                       <button
                         onClick={() => {
-                          const mensaje = `🏍️💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 al recibimiento 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador 💙✨`;
+                          const mensaje = `🚗💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 en Caldas 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador #Caldas 💙✨`;
                           window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
                         }}
                         className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
@@ -412,9 +424,9 @@ export default function InscripcionPage() {
                         value={formData.nombreCompleto}
                         onChange={handleInputChange}
                         required
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                         placeholder="EJ: JUAN PEREZ"
                       />
@@ -428,9 +440,9 @@ export default function InscripcionPage() {
                         value={formData.fechaNacimiento}
                         onChange={handleInputChange}
                         required
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       />
                       {!edadValida && formData.fechaNacimiento && (
@@ -447,15 +459,14 @@ export default function InscripcionPage() {
                         onChange={handleInputChange}
                         required
                         maxLength="10"
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                         placeholder="SOLO NÚMEROS"
                       />
                     </div>
 
-                    {/* NUEVO CAMPO: CELULAR */}
                     <div>
                       <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NÚMERO DE CELULAR *</label>
                       <input
@@ -465,57 +476,79 @@ export default function InscripcionPage() {
                         onChange={handleInputChange}
                         required
                         maxLength="10"
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                         placeholder="EJ: 3001234567"
                       />
                       <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
                     </div>
 
+                    {/* NUEVO: Tipo de vehículo */}
                     <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA MOTO *</label>
+                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">TIPO DE VEHÍCULO *</label>
+                      <select
+                        name="tipoVehiculo"
+                        value={formData.tipoVehiculo}
+                        onChange={handleInputChange}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
+                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      >
+                        <option value="moto" className="bg-white text-[#0033A0] font-bold">🏍️ MOTO</option>
+                        <option value="vehiculo" className="bg-white text-[#0033A0] font-bold">🚗 VEHÍCULO PARTICULAR</option>
+                        <option value="jeep" className="bg-white text-[#0033A0] font-bold">🚙 JEEP/4X4</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA DEL VEHÍCULO *</label>
                       <input
                         type="text"
                         name="placa"
                         value={formData.placa}
                         onChange={handleInputChange}
                         required
-                        maxLength="5"
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
-                        placeholder="EJ: ABC12"
+                        placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
                       />
-                      <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">3 LETRAS + 2 NÚMEROS (EJ: ABC12)</p>
+                      <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
                     </div>
 
+                    {/* NUEVO: Municipio (27 municipios de Caldas) */}
                     <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">SECTOR *</label>
+                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">MUNICIPIO DE CALDAS *</label>
                       <select
-                        name="sector"
-                        value={formData.sector}
+                        name="municipio"
+                        value={formData.municipio}
                         onChange={handleInputChange}
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                         className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-50 cursor-not-allowed' : ''
+                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
                         }`}
                       >
-                        {sectores.map((sector) => (
-                          <option key={sector} value={sector} className="bg-white text-[#0033A0] font-bold">
-                            {sector.toUpperCase()}
-                          </option>
+                        {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
+                          <optgroup key={zona} label={`--- ${zona.toUpperCase()} ---`}>
+                            {municipios.map(municipio => (
+                              <option key={municipio} value={municipio} className="bg-white text-[#0033A0] font-bold">
+                                {municipio}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                     </div>
 
                     <button
                       type="submit"
-                      disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS}
+                      disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
                       className={`w-full bg-[#0033A0] hover:bg-[#002266] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-[#FFD700] ${
-                        (isLoading || isSubmitting || totalInscritos >= LIMITE_MOTOS) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
+                        (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
                       }`}
                     >
                       {isLoading || isSubmitting ? (
@@ -527,7 +560,7 @@ export default function InscripcionPage() {
                           {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
                         </span>
                       ) : (
-                        '✅ INSCRIBIR MOTO AHORA ✅'
+                        '✅ INSCRIBIR VEHÍCULO AHORA ✅'
                       )}
                     </button>
                   </form>
@@ -542,8 +575,8 @@ export default function InscripcionPage() {
             </div>
 
             <div className="text-center text-white text-[10px] mt-2.5">
-              <p>PLATAFORMA OFICIAL - PARTIDO CONSERVADOR COLOMBIANO</p>
-              <p className="mt-0.5">Juan Manuel Londoño - Candidato a la Cámara</p>
+              <p>PLATAFORMA OFICIAL - PARTIDO CONSERVADOR CALDAS</p>
+              <p className="mt-0.5">Juan Manuel Londoño - Candidato a la Cámara C 101</p>
               <div className="mt-2 flex justify-center space-x-3">
                 <span className="text-xl">🇨🇴</span>
                 <span className="text-xl">💙</span>
@@ -555,8 +588,8 @@ export default function InscripcionPage() {
 
         <footer className="bg-[#002266] mt-4 py-2.5 text-center border-t border-[#FFD700]">
           <div className="container mx-auto px-3 text-white">
-            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO CONSERVADOR - TARJETÓN C 101</p>
-            <p className="mt-0.5 text-[8px]">Sistema de inscripción oficial - Límite: {LIMITE_MOTOS} motos</p>
+            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO CONSERVADOR CALDAS - TARJETÓN C 101</p>
+            <p className="mt-0.5 text-[8px]">Sistema de inscripción oficial - 27 Municipios de Caldas</p>
           </div>
         </footer>
       </div>

@@ -49,7 +49,7 @@ export default function InscripcionPage() {
     }
   };
 
-  // Validación del formulario (SIN fecha de nacimiento)
+  // Validación del formulario
   const validateForm = () => {
     setError('');
     
@@ -126,7 +126,7 @@ export default function InscripcionPage() {
     }
   };
 
-  // Manejo del submit SIN LÍMITE DE CUPOS
+  // Manejo del submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -158,7 +158,7 @@ export default function InscripcionPage() {
       // PROTECCIÓN 4: Pequeña pausa para evitar race conditions
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Preparar datos (SIN fecha de nacimiento)
+      // Preparar datos
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         cedula: formData.cedula.trim(),
@@ -205,50 +205,49 @@ export default function InscripcionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-[#0033A0] to-[#002266] text-white relative">
+    <div className="min-h-screen bg-gradient-to-b from-[#DA291C] to-[#B01E16] text-white relative">
       <div className="relative z-10">
-        <header className="py-3 px-3 border-b border-[#FFD700] bg-[#002266]/90 backdrop-blur-sm">
+        <header className="py-3 px-3 border-b border-white bg-[#B01E16]/90 backdrop-blur-sm">
           <div className="container mx-auto flex justify-center items-center">
             <div className="flex items-center space-x-2">
-              <div className="bg-white p-1.5 rounded-full shadow-lg border-2 border-[#FFD700]">
-                <div className="w-8 h-8 bg-[#0033A0] rounded-full flex flex-col items-center justify-center">
-                  <span className="font-bold text-white text-base leading-none">C</span>
-                  <span className="font-bold text-[#FFD700] text-[7px] leading-none -mt-0.5">101</span>
+              <div className="bg-white p-1.5 rounded-full shadow-lg border-2 border-white">
+                <div className="w-8 h-8 bg-[#DA291C] rounded-full flex items-center justify-center">
+                  <span className="font-bold text-white text-base leading-none">U</span>
                 </div>
               </div>
-              <div className="bg-[#FFD700] text-[#0033A0] font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-[#0033A0]">
-                TARJETÓN C 101
+              <div className="bg-white text-[#DA291C] font-bold px-2.5 py-0.5 rounded-full text-[10px] border border-[#DA291C]">
+                TARJETA U99
               </div>
             </div>
             <div className="ml-2.5 text-center">
-              <h1 className="text-lg font-bold">PARTIDO CONSERVADOR CALDAS</h1>
-              <p className="text-xs mt-0.5">¡Por un Caldas mejor!</p>
+              <h1 className="text-lg font-bold">PARTIDO DE LA U - UNIDAD NACIONAL</h1>
+              <p className="text-xs mt-0.5">¡Por un Colombia mejor!</p>
             </div>
           </div>
         </header>
 
         <main className="container mx-auto px-3 py-3">
           <div className="max-w-md mx-auto">
-            <div className="bg-white rounded-2xl shadow-2xl p-4 mb-5 border-4 border-[#FFD700]">
-              <div className="mb-4 overflow-hidden rounded-xl shadow-lg border-2 border-[#0033A0] relative h-56 md:h-64">
+            <div className="bg-white rounded-2xl shadow-2xl p-4 mb-5 border-4 border-[#DA291C]">
+              <div className="mb-4 overflow-hidden rounded-xl shadow-lg border-2 border-[#DA291C] relative h-56 md:h-64">
                 <Image
-                  src="/candidato-optimizado.jpg"
-                  alt="Juan Manuel Londoño - Candidato a la Cámara Tarjetón C 101"
+                  src="/maria-irma.jpg"
+                  alt="María Irma - Candidata al Senado Tarjeta U99"
                   fill
                   className="object-cover"
                   loading="lazy"
                 />
-                <div className="absolute bottom-2 left-2 bg-[#0033A0] bg-opacity-85 text-white px-2.5 py-1 rounded-full border-2 border-[#FFD700] backdrop-blur-sm z-10">
-                  <span className="font-bold text-sm">JUAN MANUEL LONDOÑO</span>
-                  <span className="ml-2 bg-[#FFD700] text-[#0033A0] font-bold px-2 py-0.5 rounded-full text-[10px]">TARJETÓN C 101</span>
+                <div className="absolute bottom-2 left-2 bg-[#DA291C] bg-opacity-85 text-white px-2.5 py-1 rounded-full border-2 border-white backdrop-blur-sm z-10">
+                  <span className="font-bold text-sm">MARÍA IRMA</span>
+                  <span className="ml-2 bg-white text-[#DA291C] font-bold px-2 py-0.5 rounded-full text-[10px]">TARJETA U99</span>
                 </div>
               </div>
               
               <div className="text-center mb-4">
-                <h2 className="text-xl md:text-2xl font-bold text-[#0033A0] mb-2">INSCRIPCIÓN DE VEHÍCULOS</h2>
-                <div className="bg-[#0033A0] text-white py-1.5 px-3 rounded-full inline-block mb-2 border-2 border-[#FFD700]">
-                  <p className="text-sm font-bold">RECIBIMIENTO EN CALDAS</p>
-                  <p className="text-xs">Juan Manuel Londoño - Candidato a la Cámara C 101</p>
+                <h2 className="text-xl md:text-2xl font-bold text-[#DA291C] mb-2">INSCRIPCIÓN DE VEHÍCULOS</h2>
+                <div className="bg-[#DA291C] text-white py-1.5 px-3 rounded-full inline-block mb-2 border-2 border-white">
+                  <p className="text-sm font-bold">EQUIPO DE TRABAJO ELECCIÓN SENADO</p>
+                  <p className="text-xs">María Irma - Candidata al Senado U99</p>
                 </div>
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
                   <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
@@ -269,12 +268,12 @@ export default function InscripcionPage() {
               {success && (
                 <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
                   <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
-                  <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño en Caldas!</p>
+                  <p className="text-xs">¡Gracias por acompañar a María Irma en su campaña al Senado!</p>
                   <p className="mt-1 text-[10px] font-bold">📱 Te contactaremos al celular proporcionado</p>
                   
                   <button
                     onClick={() => {
-                      const mensaje = `🚗💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 en Caldas 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador #Caldas 💙✨`;
+                      const mensaje = `🚗❤️ ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a MARÍA IRMA U99 en su campaña al Senado 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#U99 #PartidoDeLaU #MaríaIrma #Senado 💔✨`;
                       window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
                     }}
                     className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
@@ -284,9 +283,9 @@ export default function InscripcionPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-3 bg-blue-50 p-3.5 rounded-xl border border-blue-200">
+              <form onSubmit={handleSubmit} className="space-y-3 bg-red-50 p-3.5 rounded-xl border border-red-200">
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NOMBRE COMPLETO *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">NOMBRE COMPLETO *</label>
                   <input
                     type="text"
                     name="nombreCompleto"
@@ -294,7 +293,7 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs placeholder-[#DA291C]/50 ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: JUAN PEREZ"
@@ -302,7 +301,7 @@ export default function InscripcionPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">CÉDULA *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">CÉDULA *</label>
                   <input
                     type="text"
                     name="cedula"
@@ -311,7 +310,7 @@ export default function InscripcionPage() {
                     required
                     maxLength="10"
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs placeholder-[#DA291C]/50 ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="SOLO NÚMEROS"
@@ -319,7 +318,7 @@ export default function InscripcionPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NÚMERO DE CELULAR *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">NÚMERO DE CELULAR *</label>
                   <input
                     type="tel"
                     name="celular"
@@ -328,34 +327,34 @@ export default function InscripcionPage() {
                     required
                     maxLength="10"
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs placeholder-[#DA291C]/50 ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: 3001234567"
                   />
-                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
+                  <p className="text-[8px] text-[#DA291C] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
                 </div>
 
                 {/* Tipo de vehículo */}
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">TIPO DE VEHÍCULO *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">TIPO DE VEHÍCULO *</label>
                   <select
                     name="tipoVehiculo"
                     value={formData.tipoVehiculo}
                     onChange={handleInputChange}
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs appearance-none ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
-                    <option value="moto" className="bg-white text-[#0033A0] font-bold">🏍️ MOTO</option>
-                    <option value="vehiculo" className="bg-white text-[#0033A0] font-bold">🚗 VEHÍCULO PARTICULAR</option>
-                    <option value="jeep" className="bg-white text-[#0033A0] font-bold">🚙 JEEP/4X4</option>
+                    <option value="moto" className="bg-white text-[#DA291C] font-bold">🏍️ MOTO</option>
+                    <option value="vehiculo" className="bg-white text-[#DA291C] font-bold">🚗 VEHÍCULO PARTICULAR</option>
+                    <option value="jeep" className="bg-white text-[#DA291C] font-bold">🚙 JEEP/4X4</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA DEL VEHÍCULO *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">PLACA DEL VEHÍCULO *</label>
                   <input
                     type="text"
                     name="placa"
@@ -363,30 +362,30 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs placeholder-[#DA291C]/50 ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
                   />
-                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
+                  <p className="text-[8px] text-[#DA291C] mt-0.5 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
                 </div>
 
                 {/* Municipio (27 municipios de Caldas) */}
                 <div>
-                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">MUNICIPIO DE CALDAS *</label>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">MUNICIPIO DE CALDAS *</label>
                   <select
                     name="municipio"
                     value={formData.municipio}
                     onChange={handleInputChange}
                     disabled={isLoading || isSubmitting}
-                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs appearance-none ${
                       (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
                     {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
                       <optgroup key={zona} label={`--- ${zona.toUpperCase()} ---`}>
                         {municipios.map(municipio => (
-                          <option key={municipio} value={municipio} className="bg-white text-[#0033A0] font-bold">
+                          <option key={municipio} value={municipio} className="bg-white text-[#DA291C] font-bold">
                             {municipio}
                           </option>
                         ))}
@@ -398,7 +397,7 @@ export default function InscripcionPage() {
                 <button
                   type="submit"
                   disabled={isLoading || isSubmitting}
-                  className={`w-full bg-[#0033A0] hover:bg-[#002266] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-[#FFD700] ${
+                  className={`w-full bg-[#DA291C] hover:bg-[#B01E16] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-white ${
                     (isLoading || isSubmitting) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
                   }`}
                 >
@@ -416,28 +415,28 @@ export default function InscripcionPage() {
                 </button>
               </form>
 
-              <div className="mt-4 pt-3 border-t border-[#0033A0] text-center bg-blue-50 p-2.5 rounded-b-xl">
-                <p className="font-bold text-[#0033A0] text-xs">✅ REGISTRO ILIMITADO Y GRATUITO</p>
-                <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 CONFIRMACIÓN POR CELULAR INMEDIATA</p>
-                <p className="mt-1 text-[#0033A0] font-bold text-[10px]">VOTA EN EL TARJETÓN: LETRA C Y NÚMERO 101</p>
+              <div className="mt-4 pt-3 border-t border-[#DA291C] text-center bg-red-50 p-2.5 rounded-b-xl">
+                <p className="font-bold text-[#DA291C] text-xs">✅ REGISTRO ILIMITADO Y GRATUITO</p>
+                <p className="mt-0.5 font-bold text-[#DA291C] text-xs">📱 CONFIRMACIÓN POR CELULAR INMEDIATA</p>
+                <p className="mt-1 text-[#DA291C] font-bold text-[10px]">VOTA EN LA TARJETA: U99</p>
               </div>
             </div>
 
             <div className="text-center text-white text-[10px] mt-2.5">
-              <p>PLATAFORMA OFICIAL - PARTIDO CONSERVADOR CALDAS</p>
-              <p className="mt-0.5">Juan Manuel Londoño - Candidato a la Cámara C 101</p>
+              <p>PLATAFORMA OFICIAL - PARTIDO DE LA U UNIDAD NACIONAL</p>
+              <p className="mt-0.5">María Irma - Candidata al Senado U99</p>
               <div className="mt-2 flex justify-center space-x-3">
                 <span className="text-xl">🇨🇴</span>
-                <span className="text-xl">💙</span>
-                <span className="text-xl font-bold">C 101</span>
+                <span className="text-xl">❤️</span>
+                <span className="text-xl font-bold">U 99</span>
               </div>
             </div>
           </div>
         </main>
 
-        <footer className="bg-[#002266] mt-4 py-2.5 text-center border-t border-[#FFD700]">
+        <footer className="bg-[#B01E16] mt-4 py-2.5 text-center border-t border-white">
           <div className="container mx-auto px-3 text-white">
-            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO CONSERVADOR CALDAS - TARJETÓN C 101</p>
+            <p className="font-bold text-[10px]">© {new Date().getFullYear()} PARTIDO DE LA U - UNIDAD NACIONAL - TARJETA U99</p>
             <p className="mt-0.5 text-[8px]">Sistema de inscripción oficial - 27 Municipios de Caldas</p>
           </div>
         </footer>

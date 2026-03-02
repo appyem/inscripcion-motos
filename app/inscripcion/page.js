@@ -9,23 +9,18 @@ import Image from 'next/image';
 export default function InscripcionPage() {
   const [formData, setFormData] = useState({
     nombreCompleto: '',
-    fechaNacimiento: '',
     cedula: '',
     celular: '',
-    tipoVehiculo: 'moto', // NUEVO: tipo de vehículo (moto, vehiculo, jeep)
+    tipoVehiculo: 'moto',
     placa: '',
-    municipio: 'Manizales' // NUEVO: municipios de Caldas
+    municipio: 'Manizales'
   });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [edadValida, setEdadValida] = useState(true);
-  const [totalInscritos, setTotalInscritos] = useState(0);
-  const [isLoadingCount, setIsLoadingCount] = useState(true);
-  const LIMITE_INSCRIPCIONES = 150;
   
-  // NUEVO: Municipios de Caldas agrupados por zonas
+  // Municipios de Caldas agrupados por zonas
   const municipiosPorZona = {
     'Centro Sur': ['Manizales', 'Chinchiná', 'Neira', 'Palestina', 'Villamaría'],
     'Alto Occidente': ['Filadelfia', 'La Merced', 'Marmato', 'Riosucio', 'Supía'],
@@ -35,24 +30,7 @@ export default function InscripcionPage() {
     'Magdalena Caldense': ['La Dorada', 'Norcasia', 'Victoria']
   };
 
-  // Obtener todos los municipios en un solo array
   const todosMunicipios = Object.values(municipiosPorZona).flat();
-
-  // Cargar el total de inscritos al inicio
-  useEffect(() => {
-    const cargarTotalInscritos = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, 'inscripciones'));
-        setTotalInscritos(querySnapshot.size);
-      } catch (err) {
-        console.error('Error cargando total de inscritos:', err);
-      } finally {
-        setIsLoadingCount(false);
-      }
-    };
-    
-    cargarTotalInscritos();
-  }, []);
 
   // Convertir texto a mayúsculas automáticamente (SOLO para nombre y placa)
   const handleInputChange = (e) => {
@@ -62,7 +40,7 @@ export default function InscripcionPage() {
     } else if (name === 'celular') {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '').slice(0, 10) }));
     } else if (name === 'placa') {
-      // NUEVO: Permitir cualquier formato de placa (sin restricción de 5 caracteres)
+      // Permitir cualquier formato de placa (sin restricción de caracteres)
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase() }));
     } else if (name === 'nombreCompleto') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
@@ -71,37 +49,12 @@ export default function InscripcionPage() {
     }
   };
 
-  // Validar edad en tiempo real
-  useEffect(() => {
-    if (formData.fechaNacimiento) {
-      const hoy = new Date();
-      const fechaNac = new Date(formData.fechaNacimiento);
-      let edad = hoy.getFullYear() - fechaNac.getFullYear();
-      const mes = hoy.getMonth() - fechaNac.getMonth();
-      const dia = hoy.getDate() - fechaNac.getDate();
-      
-      if (mes < 0 || (mes === 0 && dia < 0)) {
-        edad--;
-      }
-      
-      setEdadValida(edad >= 18);
-    }
-  }, [formData.fechaNacimiento]);
-
-  // Validación del formulario
+  // Validación del formulario (SIN fecha de nacimiento)
   const validateForm = () => {
     setError('');
     
     if (!formData.nombreCompleto.trim()) {
       setError('EL NOMBRE COMPLETO ES REQUERIDO');
-      return false;
-    }
-    if (!formData.fechaNacimiento) {
-      setError('LA FECHA DE NACIMIENTO ES REQUERIDA');
-      return false;
-    }
-    if (!edadValida) {
-      setError('DEBES SER MAYOR DE 18 AÑOS');
       return false;
     }
     if (formData.cedula.length < 6 || formData.cedula.length > 10) {
@@ -123,7 +76,7 @@ export default function InscripcionPage() {
     return true;
   };
 
-  // Verificación de duplicados MEJORADA
+  // Verificación de duplicados
   const checkDuplicates = async () => {
     try {
       setError('🔍 Verificando duplicados...');
@@ -173,15 +126,9 @@ export default function InscripcionPage() {
     }
   };
 
-  // Manejo del submit CON PROTECCIÓN ANTI-DUPLICADOS Y LÍMITE
+  // Manejo del submit SIN LÍMITE DE CUPOS
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // VERIFICACIÓN DE LÍMITE ANTES DE PROCESAR
-    if (totalInscritos >= LIMITE_INSCRIPCIONES) {
-      setError('🚨 ¡CUPOS AGOTADOS! Ya se alcanzó el límite máximo de inscripciones.');
-      return;
-    }
     
     // PROTECCIÓN 1: Evitar submits múltiples simultáneos
     if (isSubmitting) {
@@ -211,29 +158,24 @@ export default function InscripcionPage() {
       // PROTECCIÓN 4: Pequeña pausa para evitar race conditions
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      // Preparar datos
+      // Preparar datos (SIN fecha de nacimiento)
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
-        fechaNacimiento: formData.fechaNacimiento,
         cedula: formData.cedula.trim(),
         celular: formData.celular.trim(),
-        tipoVehiculo: formData.tipoVehiculo, // NUEVO: tipo de vehículo
+        tipoVehiculo: formData.tipoVehiculo,
         placa: formData.placa.trim(),
-        municipio: formData.municipio, // NUEVO: municipio
+        municipio: formData.municipio,
         createdAt: new Date()
       };
 
       // Guardar en Firestore
       await addDoc(collection(db, 'inscripciones'), inscripcionData);
       
-      // Actualizar contador local
-      setTotalInscritos(prev => prev + 1);
-      
       // Éxito
       setSuccess(true);
       setFormData({
         nombreCompleto: '',
-        fechaNacimiento: '',
         cedula: '',
         celular: '',
         tipoVehiculo: 'moto',
@@ -261,71 +203,6 @@ export default function InscripcionPage() {
       setIsSubmitting(false);
     }
   };
-
-  // Componente de mensaje de cupos agotados
-  const CuposAgotadosMessage = () => (
-    <div className="bg-linear-to-r from-red-500 to-red-700 rounded-2xl p-6 text-center shadow-2xl border-4 border-yellow-400 animate-pulse">
-      <div className="text-6xl mb-3">🚨</div>
-      <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">¡CUPOS AGOTADOS! 🎯</h2>
-      <p className="text-lg md:text-xl font-bold text-yellow-200 mb-4">
-        Hemos alcanzado el límite máximo de <span className="text-white">{LIMITE_INSCRIPCIONES} inscripciones</span>
-      </p>
-      <div className="bg-white/20 rounded-lg p-4 mb-4">
-        <p className="text-white text-sm md:text-base mb-3">
-          🙏 ¡GRACIAS POR TU INTERÉS EN ACOMPAÑAR A JUAN MANUEL LONDOÑO C101!
-        </p>
-        <p className="text-yellow-100 font-bold text-sm md:text-base">
-          🚌 Para acompañarnos, pregunta por los vehículos que tendremos disponibles en todo Caldas
-        </p>
-      </div>
-      <div className="flex flex-col md:flex-row justify-center gap-3 mt-4">
-        <button
-          onClick={() => {
-            const mensaje = `Hola, me gustaría saber sobre los vehículos disponibles para el recibimiento de JUAN MANUEL LONDOÑO C101. Por favor indíqueme dónde puedo encontrar transporte o cómo puedo acompañar en vehículo particular. Gracias 🇨🇴💙`;
-            window.open(`https://wa.me/573001234567?text=${encodeURIComponent(mensaje)}`, '_blank');
-          }}
-          className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg text-base transition-all shadow-lg flex items-center justify-center"
-        >
-          <span className="mr-2 text-2xl">📱</span> PREGUNTAR POR VEHÍCULOS
-        </button>
-        <button
-          onClick={() => window.location.reload()}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg text-base transition-all shadow-lg flex items-center justify-center mt-2 md:mt-0"
-        >
-          <span className="mr-2">🔄</span> ACTUALIZAR
-        </button>
-      </div>
-      <p className="text-xs text-white/80 mt-4">
-        ⏰ Los cupos pueden liberarse si alguien cancela su inscripción. ¡Vuelve a intentarlo más tarde!
-      </p>
-    </div>
-  );
-
-  // Componente de contador de cupos
-  const ContadorCupos = () => (
-    <div className="bg-linear-to-r from-blue-600 to-blue-800 rounded-xl p-3 text-center mb-4 border-2 border-yellow-400">
-      <div className="flex items-center justify-center space-x-2">
-        <span className="text-3xl">🚗</span>
-        <div>
-          <p className="text-xs font-bold text-yellow-200">INSCRIPCIONES</p>
-          <p className="text-2xl md:text-3xl font-bold text-white">
-            {isLoadingCount ? '...' : totalInscritos} / {LIMITE_INSCRIPCIONES}
-          </p>
-          <div className="mt-2 bg-white/20 rounded-full h-2 overflow-hidden">
-            <div 
-              className="bg-yellow-400 h-full transition-all duration-500"
-              style={{ width: `${Math.min((totalInscritos / LIMITE_INSCRIPCIONES) * 100, 100)}%` }}
-            ></div>
-          </div>
-          <p className="text-xs text-yellow-200 mt-1">
-            {totalInscritos >= LIMITE_INSCRIPCIONES 
-              ? '¡CUPOS COMPLETOS!' 
-              : `${LIMITE_INSCRIPCIONES - totalInscritos} cupos disponibles`}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-linear-to-b from-[#0033A0] to-[#002266] text-white relative">
@@ -376,199 +253,171 @@ export default function InscripcionPage() {
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
                   <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
-                    • MAYORES DE 18 AÑOS<br/>
                     • CÉDULA Y CELULAR VÁLIDOS<br/>
-                    • PLACA DEL VEHÍCULO
+                    • PLACA DEL VEHÍCULO<br/>
+                    • REGISTRO ILIMITADO
                   </p>
                 </div>
               </div>
 
-              {/* Contador de cupos */}
-              <ContadorCupos />
-
-              {/* Mostrar mensaje de cupos agotados si se alcanzó el límite */}
-              {totalInscritos >= LIMITE_INSCRIPCIONES ? (
-                <CuposAgotadosMessage />
-              ) : (
-                <>
-                  {error && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-lg mb-3 text-center font-bold text-xs">
-                      {error}
-                    </div>
-                  )}
-
-                  {success && (
-                    <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
-                      <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
-                      <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño en Caldas!</p>
-                      <p className="mt-1 text-[10px] font-bold">📱 Te contactaremos al celular proporcionado</p>
-                      
-                      <button
-                        onClick={() => {
-                          const mensaje = `🚗💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 en Caldas 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador #Caldas 💙✨`;
-                          window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
-                        }}
-                        className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
-                      >
-                        <span className="mr-1">📲</span> INVITAR AMIGOS
-                      </button>
-                    </div>
-                  )}
-
-                  <form onSubmit={handleSubmit} className="space-y-3 bg-blue-50 p-3.5 rounded-xl border border-blue-200">
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NOMBRE COMPLETO *</label>
-                      <input
-                        type="text"
-                        name="nombreCompleto"
-                        value={formData.nombreCompleto}
-                        onChange={handleInputChange}
-                        required
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                        placeholder="EJ: JUAN PEREZ"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">FECHA NACIMIENTO *</label>
-                      <input
-                        type="date"
-                        name="fechaNacimiento"
-                        value={formData.fechaNacimiento}
-                        onChange={handleInputChange}
-                        required
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                      />
-                      {!edadValida && formData.fechaNacimiento && (
-                        <p className="text-red-600 font-bold mt-0.5 text-[10px]">❌ DEBES SER MAYOR DE 18 AÑOS</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">CÉDULA *</label>
-                      <input
-                        type="text"
-                        name="cedula"
-                        value={formData.cedula}
-                        onChange={handleInputChange}
-                        required
-                        maxLength="10"
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                        placeholder="SOLO NÚMEROS"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NÚMERO DE CELULAR *</label>
-                      <input
-                        type="tel"
-                        name="celular"
-                        value={formData.celular}
-                        onChange={handleInputChange}
-                        required
-                        maxLength="10"
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                        placeholder="EJ: 3001234567"
-                      />
-                      <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
-                    </div>
-
-                    {/* NUEVO: Tipo de vehículo */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">TIPO DE VEHÍCULO *</label>
-                      <select
-                        name="tipoVehiculo"
-                        value={formData.tipoVehiculo}
-                        onChange={handleInputChange}
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        <option value="moto" className="bg-white text-[#0033A0] font-bold">🏍️ MOTO</option>
-                        <option value="vehiculo" className="bg-white text-[#0033A0] font-bold">🚗 VEHÍCULO PARTICULAR</option>
-                        <option value="jeep" className="bg-white text-[#0033A0] font-bold">🚙 JEEP/4X4</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA DEL VEHÍCULO *</label>
-                      <input
-                        type="text"
-                        name="placa"
-                        value={formData.placa}
-                        onChange={handleInputChange}
-                        required
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                        placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
-                      />
-                      <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
-                    </div>
-
-                    {/* NUEVO: Municipio (27 municipios de Caldas) */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">MUNICIPIO DE CALDAS *</label>
-                      <select
-                        name="municipio"
-                        value={formData.municipio}
-                        onChange={handleInputChange}
-                        disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                        className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
-                          (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-50 cursor-not-allowed' : ''
-                        }`}
-                      >
-                        {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
-                          <optgroup key={zona} label={`--- ${zona.toUpperCase()} ---`}>
-                            {municipios.map(municipio => (
-                              <option key={municipio} value={municipio} className="bg-white text-[#0033A0] font-bold">
-                                {municipio}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES}
-                      className={`w-full bg-[#0033A0] hover:bg-[#002266] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-[#FFD700] ${
-                        (isLoading || isSubmitting || totalInscritos >= LIMITE_INSCRIPCIONES) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
-                      }`}
-                    >
-                      {isLoading || isSubmitting ? (
-                        <span className="flex items-center justify-center">
-                          <svg className="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
-                        </span>
-                      ) : (
-                        '✅ INSCRIBIR VEHÍCULO AHORA ✅'
-                      )}
-                    </button>
-                  </form>
-                </>
+              {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded-lg mb-3 text-center font-bold text-xs">
+                  {error}
+                </div>
               )}
 
+              {success && (
+                <div className="bg-green-100 border border-green-400 text-green-700 px-3 py-2 rounded-lg mb-3 text-center">
+                  <h3 className="text-base font-bold mb-0.5">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
+                  <p className="text-xs">¡Gracias por acompañar a Juan Manuel Londoño en Caldas!</p>
+                  <p className="mt-1 text-[10px] font-bold">📱 Te contactaremos al celular proporcionado</p>
+                  
+                  <button
+                    onClick={() => {
+                      const mensaje = `🚗💙 ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a JUAN MANUEL LONDOÑO C101 en Caldas 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#C101 #PartidoConservador #Caldas 💙✨`;
+                      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
+                    }}
+                    className="mt-3 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2 px-4 rounded-lg text-xs transition-all shadow-md flex items-center justify-center mx-auto"
+                  >
+                    <span className="mr-1">📲</span> INVITAR AMIGOS
+                  </button>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit} className="space-y-3 bg-blue-50 p-3.5 rounded-xl border border-blue-200">
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NOMBRE COMPLETO *</label>
+                  <input
+                    type="text"
+                    name="nombreCompleto"
+                    value={formData.nombreCompleto}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: JUAN PEREZ"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">CÉDULA *</label>
+                  <input
+                    type="text"
+                    name="cedula"
+                    value={formData.cedula}
+                    onChange={handleInputChange}
+                    required
+                    maxLength="10"
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="SOLO NÚMEROS"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">NÚMERO DE CELULAR *</label>
+                  <input
+                    type="tel"
+                    name="celular"
+                    value={formData.celular}
+                    onChange={handleInputChange}
+                    required
+                    maxLength="10"
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: 3001234567"
+                  />
+                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
+                </div>
+
+                {/* Tipo de vehículo */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">TIPO DE VEHÍCULO *</label>
+                  <select
+                    name="tipoVehiculo"
+                    value={formData.tipoVehiculo}
+                    onChange={handleInputChange}
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="moto" className="bg-white text-[#0033A0] font-bold">🏍️ MOTO</option>
+                    <option value="vehiculo" className="bg-white text-[#0033A0] font-bold">🚗 VEHÍCULO PARTICULAR</option>
+                    <option value="jeep" className="bg-white text-[#0033A0] font-bold">🚙 JEEP/4X4</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">PLACA DEL VEHÍCULO *</label>
+                  <input
+                    type="text"
+                    name="placa"
+                    value={formData.placa}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs placeholder-[#0033A0]/50 ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
+                  />
+                  <p className="text-[8px] text-[#0033A0] mt-0.5 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
+                </div>
+
+                {/* Municipio (27 municipios de Caldas) */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#0033A0] mb-0.5">MUNICIPIO DE CALDAS *</label>
+                  <select
+                    name="municipio"
+                    value={formData.municipio}
+                    onChange={handleInputChange}
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#0033A0] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FFD700] text-[#0033A0] font-bold text-xs appearance-none ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
+                      <optgroup key={zona} label={`--- ${zona.toUpperCase()} ---`}>
+                        {municipios.map(municipio => (
+                          <option key={municipio} value={municipio} className="bg-white text-[#0033A0] font-bold">
+                            {municipio}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || isSubmitting}
+                  className={`w-full bg-[#0033A0] hover:bg-[#002266] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-[#FFD700] ${
+                    (isLoading || isSubmitting) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
+                  }`}
+                >
+                  {isLoading || isSubmitting ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
+                    </span>
+                  ) : (
+                    '✅ INSCRIBIR VEHÍCULO AHORA ✅'
+                  )}
+                </button>
+              </form>
+
               <div className="mt-4 pt-3 border-t border-[#0033A0] text-center bg-blue-50 p-2.5 rounded-b-xl">
-                <p className="font-bold text-[#0033A0] text-xs">✅ GRATIS Y SEGURO</p>
+                <p className="font-bold text-[#0033A0] text-xs">✅ REGISTRO ILIMITADO Y GRATUITO</p>
                 <p className="mt-0.5 font-bold text-[#0033A0] text-xs">📱 CONFIRMACIÓN POR CELULAR INMEDIATA</p>
                 <p className="mt-1 text-[#0033A0] font-bold text-[10px]">VOTA EN EL TARJETÓN: LETRA C Y NÚMERO 101</p>
               </div>

@@ -2,8 +2,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
 
 export default function InscripcionPage() {
@@ -11,14 +12,18 @@ export default function InscripcionPage() {
     nombreCompleto: '',
     cedula: '',
     celular: '',
+    lider: '', // NUEVO CAMPO
     tipoVehiculo: 'moto',
     placa: '',
     municipio: 'Manizales'
   });
+  const [soatFile, setSoatFile] = useState(null); // NUEVO: archivo SOAT
+  const [soatPreview, setSoatPreview] = useState(null); // NUEVO: preview SOAT
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingSoat, setUploadingSoat] = useState(false); // NUEVO: estado de subida
   
   // Municipios de Caldas agrupados por zonas
   const municipiosPorZona = {
@@ -32,7 +37,7 @@ export default function InscripcionPage() {
 
   const todosMunicipios = Object.values(municipiosPorZona).flat();
 
-  // Convertir texto a mayúsculas automáticamente (SOLO para nombre y placa)
+  // Manejar cambio de inputs
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     if (name === 'cedula') {
@@ -40,12 +45,38 @@ export default function InscripcionPage() {
     } else if (name === 'celular') {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '').slice(0, 10) }));
     } else if (name === 'placa') {
-      // Permitir cualquier formato de placa (sin restricción de caracteres)
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase() }));
-    } else if (name === 'nombreCompleto') {
+    } else if (name === 'nombreCompleto' || name === 'lider') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
+    }
+  };
+
+  // Manejar cambio de archivo SOAT
+  const handleSoatChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validar tipo de archivo
+      if (!file.type.startsWith('image/')) {
+        setError('SOLO SE PERMITEN IMÁGENES PARA EL SOAT');
+        return;
+      }
+      
+      // Validar tamaño (máximo 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('LA IMAGEN DEL SOAT NO PUEDE SUPERAR 5MB');
+        return;
+      }
+      
+      setSoatFile(file);
+      
+      // Crear preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSoatPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -67,6 +98,14 @@ export default function InscripcionPage() {
     }
     if (!formData.celular.startsWith('3')) {
       setError('CELULAR INVÁLIDO: DEBE INICIAR CON 3 (NÚMERO MÓVIL COLOMBIANO)');
+      return false;
+    }
+    if (!formData.lider.trim()) {
+      setError('EL NOMBRE DEL LÍDER ES REQUERIDO');
+      return false;
+    }
+    if (!soatFile) {
+      setError('DEBES SUBIR LA IMAGEN DEL SOAT VIGENTE');
       return false;
     }
     if (formData.placa.length < 5) {
@@ -126,11 +165,35 @@ export default function InscripcionPage() {
     }
   };
 
+  // Subir imagen SOAT a Firebase Storage
+  const uploadSoatImage = async (file) => {
+    try {
+      setUploadingSoat(true);
+      
+      // Crear referencia única para la imagen
+      const timestamp = Date.now();
+      const fileName = `${formData.cedula}_${timestamp}_${file.name}`;
+      const storageRef = ref(storage, `soat/${fileName}`);
+      
+      // Subir archivo
+      await uploadBytes(storageRef, file);
+      
+      // Obtener URL pública
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      return downloadURL;
+    } catch (err) {
+      console.error('Error subiendo SOAT:', err);
+      throw new Error('ERROR AL SUBIR LA IMAGEN DEL SOAT');
+    } finally {
+      setUploadingSoat(false);
+    }
+  };
+
   // Manejo del submit
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // PROTECCIÓN 1: Evitar submits múltiples simultáneos
     if (isSubmitting) {
       setError('⚠️ ESPERA: Ya se está procesando tu inscripción...');
       return;
@@ -139,15 +202,12 @@ export default function InscripcionPage() {
     setError('');
     setSuccess(false);
     
-    // Validación básica
     if (!validateForm()) return;
     
-    // PROTECCIÓN 2: Activar flag de submitting
     setIsSubmitting(true);
     setIsLoading(true);
     
     try {
-      // PROTECCIÓN 3: Verificación de duplicados
       const isDuplicate = await checkDuplicates();
       if (isDuplicate && !error.includes('Verificación lenta')) {
         setIsSubmitting(false);
@@ -155,17 +215,21 @@ export default function InscripcionPage() {
         return;
       }
       
-      // PROTECCIÓN 4: Pequeña pausa para evitar race conditions
       await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Subir imagen SOAT primero
+      const soatUrl = await uploadSoatImage(soatFile);
       
       // Preparar datos
       const inscripcionData = {
         nombreCompleto: formData.nombreCompleto.trim(),
         cedula: formData.cedula.trim(),
         celular: formData.celular.trim(),
+        lider: formData.lider.trim(), // NUEVO CAMPO
         tipoVehiculo: formData.tipoVehiculo,
         placa: formData.placa.trim(),
         municipio: formData.municipio,
+        soatUrl: soatUrl, // NUEVO: URL de la imagen SOAT
         createdAt: new Date()
       };
 
@@ -178,10 +242,13 @@ export default function InscripcionPage() {
         nombreCompleto: '',
         cedula: '',
         celular: '',
+        lider: '',
         tipoVehiculo: 'moto',
         placa: '',
         municipio: 'Manizales'
       });
+      setSoatFile(null);
+      setSoatPreview(null);
       
       setTimeout(() => setSuccess(false), 8000);
       
@@ -198,9 +265,9 @@ export default function InscripcionPage() {
         setError(`❌ ERROR (${err.code || 'DESCONOCIDO'}): ${err.message || 'Falló el registro'}`);
       }
     } finally {
-      // PROTECCIÓN 5: Siempre desactivar flags
       setIsLoading(false);
       setIsSubmitting(false);
+      setUploadingSoat(false);
     }
   };
 
@@ -229,15 +296,15 @@ export default function InscripcionPage() {
         <main className="container mx-auto px-3 py-3">
           <div className="max-w-md mx-auto">
             <div className="bg-white rounded-2xl shadow-2xl p-4 mb-5 border-4 border-[#DA291C]">
-              <div className="mb-4 overflow-hidden rounded-xl shadow-lg border-2 border-[#DA291C] relative h-56 md:h-64">
+              <div className="mb-4 overflow-hidden rounded-xl shadow-lg border-2 border-[#DA291C] relative h-64 md:h-72">
                 <Image
                   src="/maria-irma.jpg"
                   alt="María Irma - Candidata al Senado Tarjeta U99"
                   fill
-                  className="object-cover"
+                  className="object-cover object-center" // MEJORADO: centrado de imagen
                   loading="lazy"
                 />
-                <div className="absolute bottom-2 left-2 bg-[#DA291C] bg-opacity-85 text-white px-2.5 py-1 rounded-full border-2 border-white backdrop-blur-sm z-10">
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 bg-[#DA291C] bg-opacity-85 text-white px-3 py-1.5 rounded-full border-2 border-white backdrop-blur-sm z-10">
                   <span className="font-bold text-sm">MARÍA IRMA</span>
                   <span className="ml-2 bg-white text-[#DA291C] font-bold px-2 py-0.5 rounded-full text-[10px]">TARJETA U99</span>
                 </div>
@@ -252,8 +319,8 @@ export default function InscripcionPage() {
                 <div className="bg-red-100 border-l-4 border-red-500 p-2.5 rounded-r">
                   <p className="font-bold text-red-800 text-xs">⚠️ IMPORTANTE:</p>
                   <p className="text-red-700 mt-0.5 text-[10px]">
+                    • SOAT VIGENTE OBLIGATORIO<br/>
                     • CÉDULA Y CELULAR VÁLIDOS<br/>
-                    • PLACA DEL VEHÍCULO<br/>
                     • REGISTRO ILIMITADO
                   </p>
                 </div>
@@ -335,6 +402,79 @@ export default function InscripcionPage() {
                   <p className="text-[8px] text-[#DA291C] mt-0.5 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
                 </div>
 
+                {/* NUEVO CAMPO: LÍDER */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">NOMBRE DEL LÍDER QUE TE REFIERE *</label>
+                  <input
+                    type="text"
+                    name="lider"
+                    value={formData.lider}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting}
+                    className={`w-full px-2.5 py-1.5 bg-white border-2 border-[#DA291C] rounded-lg focus:outline-none focus:ring-2 focus:ring-white text-[#DA291C] font-bold text-xs placeholder-[#DA291C]/50 ${
+                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: PEDRO GOMEZ"
+                  />
+                  <p className="text-[8px] text-[#DA291C] mt-0.5 font-bold">EL LÍDER QUE TE INVITA A PARTICIPAR</p>
+                </div>
+
+                {/* NUEVO CAMPO: IMAGEN SOAT */}
+                <div>
+                  <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">SOAT VIGENTE (IMAGEN) *</label>
+                  <div className="border-2 border-dashed border-[#DA291C] rounded-lg p-4 bg-white text-center">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSoatChange}
+                      disabled={isLoading || isSubmitting}
+                      className="hidden"
+                      id="soat-upload"
+                    />
+                    <label 
+                      htmlFor="soat-upload" 
+                      className={`cursor-pointer block ${
+                        (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {soatPreview ? (
+                        <div className="space-y-2">
+                          <div className="relative w-32 h-32 mx-auto">
+                            <Image
+                              src={soatPreview}
+                              alt="Vista previa SOAT"
+                              fill
+                              className="object-contain rounded-lg border-2 border-[#DA291C]"
+                            />
+                          </div>
+                          <p className="text-[#DA291C] text-xs font-bold">✅ IMAGEN CARGADA</p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSoatFile(null);
+                              setSoatPreview(null);
+                            }}
+                            className="text-[8px] text-[#DA291C] hover:underline"
+                          >
+                            Cambiar imagen
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="mx-auto w-12 h-12 bg-[#DA291C]/10 rounded-full flex items-center justify-center">
+                            <span className="text-3xl">📄</span>
+                          </div>
+                          <p className="text-[#DA291C] text-xs font-bold">SUBIR IMAGEN DEL SOAT</p>
+                          <p className="text-[8px] text-[#DA291C]/70">Toca para seleccionar imagen (máx. 5MB)</p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                  <p className="text-[8px] text-[#DA291C] mt-1 font-bold">OBLIGATORIO - SOAT VIGENTE DEL VEHÍCULO</p>
+                </div>
+
                 {/* Tipo de vehículo */}
                 <div>
                   <label className="block text-[10px] font-bold text-[#DA291C] mb-0.5">TIPO DE VEHÍCULO *</label>
@@ -396,18 +536,18 @@ export default function InscripcionPage() {
 
                 <button
                   type="submit"
-                  disabled={isLoading || isSubmitting}
+                  disabled={isLoading || isSubmitting || uploadingSoat}
                   className={`w-full bg-[#DA291C] hover:bg-[#B01E16] text-white font-bold text-sm py-2.5 px-4 rounded-lg transition-all duration-300 shadow-lg border-2 border-white ${
-                    (isLoading || isSubmitting) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
+                    (isLoading || isSubmitting || uploadingSoat) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-xl hover:scale-105'
                   }`}
                 >
-                  {isLoading || isSubmitting ? (
+                  {isLoading || isSubmitting || uploadingSoat ? (
                     <span className="flex items-center justify-center">
                       <svg className="animate-spin -ml-1 mr-1.5 h-3 w-3 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
+                      {uploadingSoat ? 'SUBIENDO SOAT...' : error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
                     </span>
                   ) : (
                     '✅ INSCRIBIR VEHÍCULO AHORA ✅'
@@ -417,7 +557,7 @@ export default function InscripcionPage() {
 
               <div className="mt-4 pt-3 border-t border-[#DA291C] text-center bg-red-50 p-2.5 rounded-b-xl">
                 <p className="font-bold text-[#DA291C] text-xs">✅ REGISTRO ILIMITADO Y GRATUITO</p>
-                <p className="mt-0.5 font-bold text-[#DA291C] text-xs">📱 CONFIRMACIÓN POR CELULAR INMEDIATA</p>
+                <p className="mt-0.5 font-bold text-[#DA291C] text-xs">📄 SOAT VIGENTE OBLIGATORIO</p>
                 <p className="mt-1 text-[#DA291C] font-bold text-[10px]">VOTA EN LA TARJETA: U99</p>
               </div>
             </div>

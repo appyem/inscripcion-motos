@@ -205,7 +205,7 @@ export default function InscripcionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#DA291C] to-[#B01E16] text-white relative">
+    <div className="min-h-screen bg-linear-to-b from-[#DA291C] to-[#B01E16] text-white relative">
       <div className="relative z-10">
         <header className="py-3 px-3 border-b border-white bg-[#B01E16]/90 backdrop-blur-sm">
           <div className="container mx-auto flex justify-center items-center">

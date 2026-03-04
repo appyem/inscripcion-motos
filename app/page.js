@@ -329,7 +329,7 @@ export default function InscripcionPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#F5E6D3] via-[#E8C999] to-[#F8F0E3] text-[#4A3C30] relative">
+    <div className="min-h-screen bg-linear-to-b from-[#F5E6D3] via-[#E8C999] to-[#F8F0E3] text-[#4A3C30] relative">
       <div className="relative z-10">
         <header className="py-4 px-3 border-b-2 border-[#C87A5D] bg-[#F8F0E3]/95 backdrop-blur-sm">
           <div className="container mx-auto flex justify-center items-center">

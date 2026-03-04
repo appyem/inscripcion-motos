@@ -1,30 +1,38 @@
-// app/page.js
+// app/inscripcion/page.js
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { db } from '@/lib/firebase';
-import { 
-  collection, 
-  query, 
-  orderBy, 
-  onSnapshot 
-} from 'firebase/firestore';
-import * as XLSX from 'xlsx';
+import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import Image from 'next/image';
 
-export default function DashboardPage() {
-  const [inscripciones, setInscripciones] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filtroCedula, setFiltroCedula] = useState('');
-  const [filtroPlaca, setFiltroPlaca] = useState('');
-  const [filtroMunicipio, setFiltroMunicipio] = useState('todos');
-  const [filtroTipoVehiculo, setFiltroTipoVehiculo] = useState('todos');
-  const [filtroLider, setFiltroLider] = useState('');
-  const [totalInscritos, setTotalInscritos] = useState(0);
-  const [formUrl, setFormUrl] = useState(typeof window !== 'undefined' ? `${window.location.origin}/inscripcion` : '');
-  const [imagenModal, setImagenModal] = useState(null);
+export default function InscripcionPage() {
+  const [formData, setFormData] = useState({
+    nombreCompleto: '',
+    cedula: '',
+    celular: '',
+    lider: '',
+    tipoVehiculo: 'moto',
+    placa: '',
+    municipio: 'Manizales'
+  });
+  const [soatBase64, setSoatBase64] = useState(null);
+  const [soatPreview, setSoatPreview] = useState(null);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [vehicleCounts, setVehicleCounts] = useState({ motos: 0, vehiculos: 0, jeeps: 0 }); // NUEVO: Conteo de vehículos
+  const [countsLoading, setCountsLoading] = useState(true); // NUEVO: Estado de carga de conteos
   
-  // NUEVO: Paleta de colores cálidos y suaves
+  // LÍMITES POR TIPO DE VEHÍCULO
+  const LIMITES = {
+    moto: 50,
+    vehiculo: 150,
+    jeep: 20
+  };
+  
+  // NUEVO: Paleta de colores cálidos y suaves basada en la imagen de María Irma
   const coloresCalidos = {
     cremaPrincipal: '#F5E6D3',
     doradoSuave: '#E8C999',
@@ -46,7 +54,6 @@ export default function DashboardPage() {
   
   // Municipios de Caldas agrupados por zonas
   const municipiosPorZona = {
-    'todos': 'Todos los Municipios',
     'Centro Sur': ['Manizales', 'Chinchiná', 'Neira', 'Palestina', 'Villamaría'],
     'Alto Occidente': ['Filadelfia', 'La Merced', 'Marmato', 'Riosucio', 'Supía'],
     'Occidente': ['Anserma', 'Belalcázar', 'Risaralda', 'San José', 'Viterbo'],
@@ -54,480 +61,623 @@ export default function DashboardPage() {
     'Oriente': ['Manzanares', 'Marquetalia', 'Marulanda', 'Pensilvania', 'Samaná'],
     'Magdalena Caldense': ['La Dorada', 'Norcasia', 'Victoria']
   };
-  
-  const todosMunicipios = ['todos', ...Object.values(municipiosPorZona).flat().filter(m => m !== 'todos')];
-  const tiposVehiculo = ['todos', 'moto', 'vehiculo', 'jeep'];
 
+  const todosMunicipios = Object.values(municipiosPorZona).flat();
+
+  // NUEVO: Cargar conteos de vehículos en tiempo real
   useEffect(() => {
-    const q = query(collection(db, 'inscripciones'), orderBy('createdAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const datos = querySnapshot.docs.map(doc => {
+    setCountsLoading(true);
+    const unsubscribe = onSnapshot(collection(db, 'inscripciones'), (snapshot) => {
+      let counts = { motos: 0, vehiculos: 0, jeeps: 0 };
+      snapshot.forEach(doc => {
         const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          fechaFormateada: data.createdAt?.toDate?.().toLocaleString('es-CO', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          }) || 'N/A'
-        };
+        if (data.tipoVehiculo === 'moto') counts.motos++;
+        else if (data.tipoVehiculo === 'vehiculo') counts.vehiculos++;
+        else if (data.tipoVehiculo === 'jeep') counts.jeeps++;
       });
-      
-      setInscripciones(datos);
-      setTotalInscritos(datos.length);
-      setLoading(false);
+      setVehicleCounts(counts);
+      setCountsLoading(false);
     }, (error) => {
-      console.error('Error en listener de Firestore:', error);
-      setLoading(false);
+      console.error('Error cargando conteos de vehículos:', error);
+      setCountsLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  // NUEVO: Estadísticas por tipo de vehículo
-  const estadisticasVehiculos = tiposVehiculo.slice(1).map(tipo => {
-    const count = inscripciones.filter(ins => ins.tipoVehiculo === tipo).length;
-    const nombres = {
-      'moto': '🏍️ MOTOS',
-      'vehiculo': '🚗 VEHÍCULOS',
-      'jeep': '🚙 JEEPS/4X4'
-    };
-    return { tipo, count, nombre: nombres[tipo] };
-  });
-
-  // NUEVO: Estadísticas por zona
-  const estadisticasZonas = Object.keys(municipiosPorZona)
-    .filter(zona => zona !== 'todos')
-    .map(zona => {
-      const municipios = municipiosPorZona[zona];
-      const count = inscripciones.filter(ins => municipios.includes(ins.municipio)).length;
-      return { zona, count };
-    })
-    .sort((a, b) => b.count - a.count);
-
-  // NUEVO: Estadísticas por municipio (individual)
-  const estadisticasMunicipios = [...new Set(inscripciones.map(ins => ins.municipio))]
-    .map(municipio => {
-      const count = inscripciones.filter(ins => ins.municipio === municipio).length;
-      return { municipio, count };
-    })
-    .sort((a, b) => b.count - a.count);
-
-  // NUEVO: Estadísticas por líder (top 10)
-  const estadisticasLideres = [...inscripciones.reduce((acc, ins) => {
-    const lider = ins.lider || 'SIN LÍDER';
-    if (!acc.has(lider)) {
-      acc.set(lider, { lider, count: 0 });
-    }
-    acc.get(lider).count++;
-    return acc;
-  }, new Map()).values()]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-
-  // Filtrar inscripciones
-  const inscripcionesFiltradas = inscripciones.filter(ins => {
-    const coincideCedula = filtroCedula ? ins.cedula.includes(filtroCedula) : true;
-    const coincidePlaca = filtroPlaca ? ins.placa.includes(filtroPlaca) : true;
-    const coincideMunicipio = filtroMunicipio === 'todos' ? true : ins.municipio === filtroMunicipio;
-    const coincideTipoVehiculo = filtroTipoVehiculo === 'todos' ? true : ins.tipoVehiculo === filtroTipoVehiculo;
-    const coincideLider = filtroLider ? (ins.lider || '').includes(filtroLider.toUpperCase()) : true;
-    return coincideCedula && coincidePlaca && coincideMunicipio && coincideTipoVehiculo && coincideLider;
-  });
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(formUrl);
-    alert('¡URL copiada al portapapeles! Ahora puedes compartirla.');
+  // NUEVO: Verificar si se alcanzó el límite para el tipo de vehículo seleccionado
+  const isVehicleLimitReached = () => {
+    if (formData.tipoVehiculo === 'moto') return vehicleCounts.motos >= LIMITES.moto;
+    if (formData.tipoVehiculo === 'vehiculo') return vehicleCounts.vehiculos >= LIMITES.vehiculo;
+    if (formData.tipoVehiculo === 'jeep') return vehicleCounts.jeeps >= LIMITES.jeep;
+    return false;
   };
 
-  const shareViaWhatsApp = () => {
-    const mensaje = `🚗❤️ ¡ÚNETE AL EQUIPO DE TRABAJO DE MARÍA IRMA! 🇨🇴\n\nAcompaña a MARÍA IRMA U99 en su campaña al Senado 🏛️\n\n✅ Inscripción rápida y segura\n✅ SOAT vigente obligatorio\n✅ Regístrate con tu líder\n\n👉 INSCRÍBETE AQUÍ:\n${formUrl}\n\n#U99 #PartidoDeLaU #MaríaIrma #Senado 💔✨`;
-    
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(whatsappUrl, '_blank');
+  // NUEVO: Obtener mensaje de límite alcanzado
+  const getLimitMessage = () => {
+    if (formData.tipoVehiculo === 'moto' && vehicleCounts.motos >= LIMITES.moto) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito las ${LIMITES.moto} motos permitidas.`;
+    if (formData.tipoVehiculo === 'vehiculo' && vehicleCounts.vehiculos >= LIMITES.vehiculo) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito los ${LIMITES.vehiculo} vehículos permitidos.`;
+    if (formData.tipoVehiculo === 'jeep' && vehicleCounts.jeeps >= LIMITES.jeep) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito los ${LIMITES.jeep} jeeps permitidos.`;
+    return '';
   };
 
-  // NUEVO: Función para ver imagen SOAT (Base64)
-  const verSoat = (soatBase64) => {
-    if (soatBase64) {
-      setImagenModal(soatBase64);
+  // Manejar cambio de inputs
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    if (name === 'cedula') {
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '') }));
+    } else if (name === 'celular') {
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^0-9]/g, '').slice(0, 10) }));
+    } else if (name === 'placa') {
+      setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase() }));
+    } else if (name === 'nombreCompleto' || name === 'lider') {
+      setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+    } else if (name === 'tipoVehiculo') {
+      // Resetear error al cambiar tipo de vehículo
+      setError('');
+      setFormData(prev => ({ ...prev, [name]: value }));
     } else {
-      alert('No hay imagen de SOAT disponible para esta inscripción');
+      setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
-  // NUEVO: Función para cerrar modal
-  const cerrarModal = () => {
-    setImagenModal(null);
+  // Convertir imagen a Base64
+  const convertToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
   };
 
-  // NUEVO: Función para exportar a Excel
-  const exportarExcel = () => {
-    if (inscripciones.length === 0) {
-      alert('No hay datos para exportar');
+  // Manejar cambio de archivo SOAT
+  const handleSoatChange = async (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError('SOLO SE PERMITEN IMÁGENES PARA EL SOAT');
+        return;
+      }
+      
+      if (file.size > 1 * 1024 * 1024) {
+        setError('LA IMAGEN DEL SOAT NO PUEDE SUPERAR 1MB (LÍMITE DE FIRESTORE)');
+        return;
+      }
+      
+      try {
+        const base64 = await convertToBase64(file);
+        setSoatBase64(base64);
+        setSoatPreview(base64);
+      } catch (err) {
+        console.error('Error convirtiendo imagen:', err);
+        setError('ERROR AL PROCESAR LA IMAGEN');
+      }
+    }
+  };
+
+  // Validación del formulario
+  const validateForm = () => {
+    setError('');
+    
+    // NUEVO: Verificar límite ANTES de otras validaciones
+    if (isVehicleLimitReached()) {
+      setError(getLimitMessage());
+      return false;
+    }
+    
+    if (!formData.nombreCompleto.trim()) {
+      setError('EL NOMBRE COMPLETO ES REQUERIDO');
+      return false;
+    }
+    if (formData.cedula.length < 6 || formData.cedula.length > 10) {
+      setError('CÉDULA DEBE TENER 6-10 DÍGITOS');
+      return false;
+    }
+    if (formData.celular.length !== 10) {
+      setError('CELULAR DEBE TENER 10 DÍGITOS (INICIAR CON 3)');
+      return false;
+    }
+    if (!formData.celular.startsWith('3')) {
+      setError('CELULAR INVÁLIDO: DEBE INICIAR CON 3 (NÚMERO MÓVIL COLOMBIANO)');
+      return false;
+    }
+    if (!formData.lider.trim()) {
+      setError('EL NOMBRE DEL LÍDER ES REQUERIDO');
+      return false;
+    }
+    if (!soatBase64) {
+      setError('DEBES SUBIR LA IMAGEN DEL SOAT VIGENTE');
+      return false;
+    }
+    if (formData.placa.length < 5) {
+      setError('PLACA DEBE TENER AL MENOS 5 CARACTERES');
+      return false;
+    }
+    return true;
+  };
+
+  // Verificación de duplicados
+  const checkDuplicates = async () => {
+    try {
+      setError('🔍 Verificando duplicados...');
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+      );
+      
+      const cedulaCheck = getDocs(query(
+        collection(db, 'inscripciones'),
+        where('cedula', '==', formData.cedula)
+      ));
+      
+      const cedulaSnapshot = await Promise.race([cedulaCheck, timeoutPromise]);
+      if (!cedulaSnapshot.empty) {
+        setError('❌ ¡CÉDULA YA REGISTRADA! Usa otra cédula');
+        return true;
+      }
+
+      const placaCheck = getDocs(query(
+        collection(db, 'inscripciones'),
+        where('placa', '==', formData.placa)
+      ));
+      
+      const placaSnapshot = await Promise.race([placaCheck, timeoutPromise]);
+      if (!placaSnapshot.empty) {
+        setError('❌ ¡PLACA YA REGISTRADA! Usa otra placa');
+        return true;
+      }
+
+      setError('');
+      return false;
+    } catch (err) {
+      console.error('Error en verificación:', err);
+      
+      if (err.message === 'TIMEOUT' || err.code === 'unavailable') {
+        console.warn('Verificación de duplicados fallida. Permitiendo inscripción...');
+        setError('⚠️ Verificación lenta. Continuando con precaución...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return false;
+      }
+      
+      setError(`❌ ERROR: ${err.message || 'Verificación fallida'}`);
+      return true;
+    }
+  };
+
+  // Manejo del submit
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (isSubmitting) {
+      setError('⚠️ ESPERA: Ya se está procesando tu inscripción...');
       return;
     }
-
-    // Preparar datos para Excel
-    const datosExcel = inscripciones.map(ins => ({
-      'Fecha/Hora': ins.fechaFormateada,
-      'Nombre Completo': ins.nombreCompleto,
-      'Cédula': ins.cedula,
-      'Celular': ins.celular,
-      'Líder': ins.lider || 'SIN LÍDER',
-      'Tipo de Vehículo': ins.tipoVehiculo === 'moto' ? 'MOTO' : 
-                         ins.tipoVehiculo === 'vehiculo' ? 'VEHÍCULO PARTICULAR' : 'JEEP/4X4',
-      'Placa': ins.placa,
-      'Municipio': ins.municipio,
-      'SOAT': ins.soatBase64 ? 'IMAGEN DISPONIBLE' : 'NO DISPONIBLE'
-    }));
-
-    // Crear hoja de trabajo
-    const ws = XLSX.utils.json_to_sheet(datosExcel);
     
-    // Ajustar ancho de columnas
-    const wscols = [
-      {wch: 20}, // Fecha/Hora
-      {wch: 30}, // Nombre Completo
-      {wch: 15}, // Cédula
-      {wch: 15}, // Celular
-      {wch: 25}, // Líder
-      {wch: 20}, // Tipo de Vehículo
-      {wch: 12}, // Placa
-      {wch: 20}, // Municipio
-      {wch: 18}  // SOAT
-    ];
-    ws['!cols'] = wscols;
-
-    // Crear libro de trabajo
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Inscripciones');
-
-    // Generar archivo Excel
-    const fecha = new Date().toISOString().split('T')[0];
-    XLSX.writeFile(wb, `Inscripciones_Maria_Irma_U99_${fecha}.xlsx`);
+    // NUEVO: Verificación de límite al momento del submit
+    if (isVehicleLimitReached()) {
+      setError(getLimitMessage());
+      return;
+    }
     
-    // Alerta de éxito
-    alert(`✅ ¡Exportación exitosa!\n\nSe han exportado ${inscripciones.length} registros a Excel.`);
+    setError('');
+    setSuccess(false);
+    
+    if (!validateForm()) return;
+    
+    setIsSubmitting(true);
+    setIsLoading(true);
+    
+    try {
+      const isDuplicate = await checkDuplicates();
+      if (isDuplicate && !error.includes('Verificación lenta')) {
+        setIsSubmitting(false);
+        setIsLoading(false);
+        return;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const inscripcionData = {
+        nombreCompleto: formData.nombreCompleto.trim(),
+        cedula: formData.cedula.trim(),
+        celular: formData.celular.trim(),
+        lider: formData.lider.trim(),
+        tipoVehiculo: formData.tipoVehiculo,
+        placa: formData.placa.trim(),
+        municipio: formData.municipio,
+        soatBase64: soatBase64,
+        createdAt: new Date()
+      };
+
+      await addDoc(collection(db, 'inscripciones'), inscripcionData);
+      
+      setSuccess(true);
+      setFormData({
+        nombreCompleto: '',
+        cedula: '',
+        celular: '',
+        lider: '',
+        tipoVehiculo: 'moto',
+        placa: '',
+        municipio: 'Manizales'
+      });
+      setSoatBase64(null);
+      setSoatPreview(null);
+      
+      setTimeout(() => setSuccess(false), 8000);
+      
+    } catch (err) {
+      console.error('Error guardando:', err);
+      
+      if (err.code === 'permission-denied') {
+        setError('❌ ERROR CRÍTICO: Reglas de Firebase bloqueando escritura. Contacte al administrador INMEDIATAMENTE.');
+      } else if (err.code === 'invalid-argument' || err.code === 'failed-precondition') {
+        setError('❌ DATOS INVÁLIDOS: Verifica todos los campos. La imagen debe ser menor a 1MB.');
+      } else if (err.code === 'unavailable') {
+        setError('❌ SIN CONEXIÓN: Verifica tu internet e intenta nuevamente');
+      } else {
+        setError(`❌ ERROR (${err.code || 'DESCONOCIDO'}): ${err.message || 'Falló el registro'}`);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-[#F5E6D3] via-[#E8C999] to-[#F8F0E3] text-[#4A3C30] relative">
-      {/* Modal para ver imagen SOAT */}
-      {imagenModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
-          onClick={cerrarModal}
-        >
-          <div className="bg-[#FFF9F0] rounded-2xl max-w-4xl max-h-[90vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 border-b border-[#C87A5D]">
-              <h3 className="text-xl font-bold text-[#C87A5D]">IMAGEN SOAT</h3>
-              <button 
-                onClick={cerrarModal}
-                className="bg-[#C87A5D] text-[#F8F0E3] px-4 py-2 rounded-lg hover:bg-[#A65E47] transition-all"
-              >
-                ✕ CERRAR
-              </button>
-            </div>
-            <div className="p-4">
-              <Image 
-                src={imagenModal} 
-                alt="SOAT"
-                width={800}
-                height={600}
-                className="max-w-full max-h-[70vh] object-contain rounded-lg border-4 border-[#E8C999]"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <header className="bg-[#F8F0E3]/95 shadow-lg border-b-2 border-[#C87A5D]">
-        <div className="container mx-auto px-4 py-4 md:py-5 flex flex-col md:flex-row justify-between items-center">
-          <div className="flex items-center space-x-3 md:space-x-4 mb-3 md:mb-0">
+    <div className="min-h-screen bg-gradient-to-b from-[#F5E6D3] via-[#E8C999] to-[#F8F0E3] text-[#4A3C30] relative">
+      <div className="relative z-10">
+        <header className="py-4 px-3 border-b-2 border-[#C87A5D] bg-[#F8F0E3]/95 backdrop-blur-sm">
+          <div className="container mx-auto flex justify-center items-center">
             <div className="flex items-center space-x-2">
-              <div className="bg-[#F5E6D3] p-1.5 md:p-2 rounded-full shadow-lg border-2 border-[#E8C999]">
-                <div className="w-9 h-9 md:w-11 md:h-11 bg-[#C87A5D] rounded-full flex items-center justify-center">
-                  <span className="font-bold text-[#F8F0E3] text-lg md:text-xl leading-none">U</span>
+              <div className="bg-[#F5E6D3] p-1.5 rounded-full shadow-lg border-2 border-[#E8C999]">
+                <div className="w-9 h-9 bg-[#C87A5D] rounded-full flex items-center justify-center">
+                  <span className="font-bold text-[#F8F0E3] text-lg leading-none">U</span>
                 </div>
               </div>
-              <div className="bg-[#E8C999] text-[#4A3C30] font-bold px-3 py-1 rounded-full text-xs md:text-sm border-2 border-[#C87A5D] shadow-lg">
+              <div className="bg-[#E8C999] text-[#4A3C30] font-bold px-3 py-1 rounded-full text-xs border-2 border-[#C87A5D] shadow-lg">
                 TARJETA U99
               </div>
             </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-[#8B6F47]">DASHBOARD ADMINISTRATIVO</h1>
-              <p className="text-[#6B5E51] text-base md:text-lg mt-1 font-semibold">Inscripciones de Vehículos - María Irma U99</p>
+            <div className="ml-3 text-center">
+              <h1 className="text-xl font-bold text-[#8B6F47]">PARTIDO DE LA U - UNIDAD NACIONAL</h1>
+              <p className="text-sm mt-0.5 font-semibold text-[#6B5E51]">¡Por un Colombia mejor!</p>
             </div>
           </div>
-          <div className="text-center bg-[#C87A5D] p-3 rounded-xl border-2 border-[#E8C999] shadow-lg">
-            <p className="text-xl md:text-2xl font-bold text-[#F8F0E3]">TOTAL INSCRITOS: {totalInscritos}</p>
-            <p className="mt-1 text-sm md:text-base text-[#F5E6D3]">{new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-          </div>
-        </div>
-      </header>
+        </header>
 
-      <main className="container mx-auto px-2 md:px-4 py-3 md:py-5">
-        <div className="bg-linear-to-r from-[#C87A5D] to-[#A65E47] rounded-2xl shadow-xl p-4 md:p-5 mb-5 border-2 border-[#E8C999]">
-          <h2 className="text-xl md:text-2xl font-bold text-[#F8F0E3] text-center mb-3">🔗 URL PARA INSCRIPCIONES</h2>
-          <div className="bg-[#F8F0E3]/30 backdrop-blur-sm rounded-lg p-3 md:p-4 mb-3">
-            <p className="text-[#4A3C30] text-base md:text-lg font-mono break-all text-center">{formUrl || 'Cargando URL...'}</p>
-          </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
-            <button
-              onClick={copyToClipboard}
-              className="w-full bg-[#E8C999] hover:bg-[#F5D7B3] text-[#4A3C30] font-bold py-2.5 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
-            >
-              <span className="mr-2 text-lg">📋</span> COPIAR URL
-            </button>
-            
-            <button
-              onClick={shareViaWhatsApp}
-              className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2.5 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
-            >
-              <span className="mr-2 text-2xl">📱</span> COMPARTIR POR WHATSAPP
-            </button>
-
-            {/* NUEVO: Botón Exportar Excel */}
-            <button
-              onClick={exportarExcel}
-              className="w-full bg-[#8A9B68] hover:bg-[#6D7B55] text-[#F8F0E3] font-bold py-2.5 px-4 rounded-lg text-base transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
-            >
-              <span className="mr-2 text-2xl">📊</span> EXPORTAR A EXCEL
-            </button>
-          </div>
-          
-          <div className="bg-[#8A9B68]/20 border-l-4 border-[#8A9B68] p-2.5 rounded-r">
-            <p className="text-[#4A3C30] font-bold text-xs md:text-sm text-center">
-              ✨ El mensaje incluye emojis y enlace directo de inscripción
-            </p>
-          </div>
-        </div>
-
-        {/* NUEVO: RESUMEN DE ESTADÍSTICAS */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-5">
-          {/* Estadísticas por Tipo de Vehículo */}
-          <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#C87A5D]">
-            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#C87A5D] text-center">📊 POR TIPO DE VEHÍCULO</h2>
-            <div className="space-y-2">
-              {estadisticasVehiculos.map(({ tipo, count, nombre }) => (
-                <div key={tipo} className="flex justify-between items-center p-2 bg-[#F5E6D3]/50 rounded-lg">
-                  <span className="font-bold text-[#4A3C30]">{nombre}</span>
-                  <span className="text-2xl font-bold text-[#C87A5D]">{count}</span>
+        <main className="container mx-auto px-3 py-3">
+          <div className="max-w-md mx-auto">
+            <div className="bg-[#FFF9F0] rounded-2xl shadow-2xl p-5 mb-5 border-4 border-[#C87A5D]">
+              {/* IMAGEN SIN EL ÓVALO DE TEXTO - SOLO LA IMAGEN CENTRADA */}
+              <div className="mb-5 overflow-hidden rounded-xl shadow-2xl border-3 border-[#E8C999] relative h-64 md:h-72">
+                <Image
+                  src="/maria-irma-nueva.jpg"
+                  alt="María Irma - Candidata al Senado Tarjeta U99"
+                  fill
+                  className="object-cover object-center"
+                  loading="lazy"
+                />
+                {/* ELIMINADO: El óvalo con "MARÍA IRMA TARJETA U99" que tapaba la imagen */}
+              </div>
+              
+              <div className="text-center mb-5">
+                <h2 className="text-2xl md:text-3xl font-bold text-[#C87A5D] mb-3">INSCRIPCIÓN DE VEHÍCULOS</h2>
+                <div className="bg-[#C87A5D] text-[#F8F0E3] py-2 px-4 rounded-full inline-block mb-3 border-2 border-[#E8C999] shadow-lg">
+                  <p className="text-base font-bold">EQUIPO DE TRABAJO ELECCIÓN SENADO</p>
+                  <p className="text-sm">María Irma - Candidata al Senado U99</p>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Estadísticas por Zona */}
-          <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#C87A5D]">
-            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#C87A5D] text-center">🗺️ POR ZONA DE CALDAS</h2>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-              {estadisticasZonas.map(({ zona, count }) => (
-                <div key={zona} className="flex justify-between items-center p-2 bg-[#F5E6D3]/50 rounded-lg">
-                  <span className="font-bold text-[#4A3C30] text-xs">{zona}</span>
-                  <span className="text-xl font-bold text-[#C87A5D]">{count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* NUEVO: Estadísticas por Municipio */}
-          <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#C87A5D]">
-            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#C87A5D] text-center">🏙️ TOP 10 MUNICIPIOS</h2>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-              {estadisticasMunicipios.slice(0, 10).map(({ municipio, count }) => (
-                <div key={municipio} className="flex justify-between items-center p-2 bg-[#F5E6D3]/50 rounded-lg">
-                  <span className="font-bold text-[#4A3C30] text-[10px] truncate max-w-20">{municipio}</span>
-                  <span className="text-xl font-bold text-[#C87A5D]">{count}</span>
-                </div>
-              ))}
-              {estadisticasMunicipios.length === 0 && (
-                <p className="text-center text-[#6B5E51]/70 text-sm">Sin datos aún</p>
-              )}
-            </div>
-          </div>
-
-          {/* Estadísticas por Líder (Top 10) */}
-          <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl p-4 border border-[#C87A5D]">
-            <h2 className="text-lg md:text-xl font-bold mb-3 text-[#C87A5D] text-center">👥 TOP 10 LÍDERES</h2>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-              {estadisticasLideres.map(({ lider, count }, index) => (
-                <div key={lider} className="flex justify-between items-center p-2 bg-[#F5E6D3]/50 rounded-lg">
-                  <div>
-                    <span className="font-bold text-[#4A3C30] text-[10px] truncate max-w-20">{index + 1}. {lider}</span>
+                
+                {/* NUEVO: Panel de cupos disponibles */}
+                <div className="bg-[#E8F5E9] border-l-4 border-[#8A9B68] p-3 rounded-lg mb-3">
+                  <p className="font-bold text-[#6D7B55] text-sm text-center">📊 CUPOS DISPONIBLES</p>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.moto - vehicleCounts.motos}</p>
+                      <p className="text-[10px] text-[#6B5E51]">MOTOS<br/>(50 max)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.vehiculo - vehicleCounts.vehiculos}</p>
+                      <p className="text-[10px] text-[#6B5E51]">VEHÍCULOS<br/>(150 max)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.jeep - vehicleCounts.jeeps}</p>
+                      <p className="text-[10px] text-[#6B5E51]">JEEPS<br/>(20 max)</p>
+                    </div>
                   </div>
-                  <span className="text-xl font-bold text-[#C87A5D]">{count}</span>
                 </div>
-              ))}
-              {estadisticasLideres.length === 0 && (
-                <p className="text-center text-[#6B5E51]/70 text-sm">Sin datos de líderes aún</p>
+                
+                <div className="bg-[#F8F0E3] border-l-4 border-[#E67E7E] p-3 rounded-r shadow-md">
+                  <p className="font-bold text-[#C87A5D] text-sm">⚠️ IMPORTANTE:</p>
+                  <p className="text-[#6B5E51] mt-1 text-xs">
+                    • SOAT VIGENTE OBLIGATORIO<br/>
+                    • IMAGEN MÁXIMO 1MB<br/>
+                    • CÉDULA Y CELULAR VÁLIDOS
+                  </p>
+                </div>
+              </div>
+
+              {error && (
+                <div className="bg-[#F8F0E3] border-l-4 border-[#E67E7E] text-[#C87A5D] px-4 py-3 rounded-lg mb-4 text-center font-bold text-sm">
+                  {error}
+                </div>
               )}
-            </div>
-          </div>
-        </div>
 
-        {/* Filtros de Búsqueda */}
-        <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl p-4 mb-5 border border-[#C87A5D]">
-          <h2 className="text-xl md:text-2xl font-bold mb-3 text-[#C87A5D] text-center">🔍 FILTROS DE BÚSQUEDA</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-            <div>
-              <label className="block text-xs font-bold mb-1 text-[#8B6F47]">CÉDULA</label>
-              <input
-                type="text"
-                value={filtroCedula}
-                onChange={(e) => setFiltroCedula(e.target.value.replace(/[^0-9]/g, ''))}
-                className="w-full px-2.5 py-1.5 bg-white border border-[#E8E0D5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] text-[#4A3C30] font-bold text-xs placeholder-[#8B6F47]/50"
-                placeholder="Buscar cédula"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold mb-1 text-[#8B6F47]">PLACA</label>
-              <input
-                type="text"
-                value={filtroPlaca}
-                onChange={(e) => setFiltroPlaca(e.target.value.replace(/[^A-Z0-9]/gi, '').toUpperCase())}
-                className="w-full px-2.5 py-1.5 bg-white border border-[#E8E0D5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] text-[#4A3C30] font-bold text-xs placeholder-[#8B6F47]/50"
-                placeholder="Buscar placa"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold mb-1 text-[#8B6F47]">MUNICIPIO</label>
-              <select
-                value={filtroMunicipio}
-                onChange={(e) => setFiltroMunicipio(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white border border-[#E8E0D5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] text-[#4A3C30] font-bold text-xs appearance-none"
-              >
-                {todosMunicipios.map(municipio => (
-                  <option key={municipio} value={municipio} className="bg-[#F8F0E3] text-[#8B6F47] font-bold">
-                    {municipio === 'todos' ? 'TODOS' : municipio}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold mb-1 text-[#8B6F47]">TIPO VEHÍCULO</label>
-              <select
-                value={filtroTipoVehiculo}
-                onChange={(e) => setFiltroTipoVehiculo(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white border border-[#E8E0D5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] text-[#4A3C30] font-bold text-xs appearance-none"
-              >
-                {tiposVehiculo.map(tipo => (
-                  <option key={tipo} value={tipo} className="bg-[#F8F0E3] text-[#8B6F47] font-bold">
-                    {tipo === 'todos' ? 'TODOS' : 
-                     tipo === 'moto' ? '🏍️ MOTO' :
-                     tipo === 'vehiculo' ? '🚗 VEHÍCULO' : '🚙 JEEP/4X4'}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold mb-1 text-[#8B6F47]">LÍDER</label>
-              <input
-                type="text"
-                value={filtroLider}
-                onChange={(e) => setFiltroLider(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-white border border-[#E8E0D5] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] text-[#4A3C30] font-bold text-xs placeholder-[#8B6F47]/50"
-                placeholder="Nombre del líder"
-              />
-            </div>
-          </div>
-        </div>
+              {success && (
+                <div className="bg-[#E8F5E9] border-l-4 border-[#8A9B68] text-[#6D7B55] px-4 py-3 rounded-lg mb-4 text-center shadow-lg">
+                  <h3 className="text-xl font-bold mb-1">¡INSCRIPCIÓN EXITOSA! 🎉</h3>
+                  <p className="text-sm">¡Gracias por acompañar a María Irma en su campaña al Senado!</p>
+                  <p className="mt-2 text-sm font-bold">📱 Te contactaremos al celular proporcionado</p>
+                  
+                  <button
+                    onClick={() => {
+                      const mensaje = `🚗❤️ ¡YA ME INSCRIBÍ! 🇨🇴\n\nVoy a acompañar a MARÍA IRMA U99 en su campaña al Senado 🏛️\n\n¡Únete tú también! Es rápido y seguro:\n${window.location.origin}/inscripcion\n\n#U99 #PartidoDeLaU #MaríaIrma #Senado 💔✨`;
+                      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
+                    }}
+                    className="mt-4 bg-[#25D366] hover:bg-[#128C7E] text-white font-bold py-2.5 px-6 rounded-lg text-sm transition-all shadow-md flex items-center justify-center mx-auto"
+                  >
+                    <span className="mr-2 text-xl">📲</span> INVITAR AMIGOS
+                  </button>
+                </div>
+              )}
 
-        {/* Listado de Inscripciones */}
-        <div className="bg-[#FFF9F0]/80 backdrop-blur-lg rounded-2xl shadow-xl overflow-hidden border border-[#C87A5D]">
-          <div className="p-3 md:p-4 border-b border-[#C87A5D] bg-[#F5E6D3]/50">
-            <h2 className="text-xl md:text-2xl font-bold text-[#C87A5D]">📋 LISTADO DE INSCRIPCIONES</h2>
-            <p className="mt-1 text-sm md:text-base text-[#8B6F47]">Resultados: {inscripcionesFiltradas.length} de {totalInscritos}</p>
-          </div>
-          
-          {loading ? (
-            <div className="p-6 md:p-10 text-center">
-              <svg className="animate-spin h-8 w-8 md:h-12 md:w-12 mx-auto text-[#C87A5D]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <p className="mt-3 md:mt-4 text-base md:text-xl font-bold text-[#4A3C30]">CARGANDO DATOS INICIALES...</p>
-              <p className="mt-2 text-xs text-[#6B5E51]/80">Conectando con base de datos en tiempo real</p>
-            </div>
-          ) : inscripcionesFiltradas.length === 0 ? (
-            <div className="p-6 md:p-10 text-center">
-              <p className="text-lg md:text-xl font-bold text-[#C87A5D]">NO HAY INSCRIPCIONES QUE COINCIDAN CON LOS FILTROS</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs md:text-sm">
-                <thead className="bg-[#C87A5D] text-[#F8F0E3] sticky top-0">
-                  <tr>
-                    <th className="p-2 md:p-3 text-left font-bold">FECHA/HORA</th>
-                    <th className="p-2 md:p-3 text-left font-bold">NOMBRE</th>
-                    <th className="p-2 md:p-3 text-left font-bold">CÉDULA</th>
-                    <th className="p-2 md:p-3 text-left font-bold">CELULAR</th>
-                    <th className="p-2 md:p-3 text-left font-bold">LÍDER</th>
-                    <th className="p-2 md:p-3 text-left font-bold">TIPO</th>
-                    <th className="p-2 md:p-3 text-left font-bold">PLACA</th>
-                    <th className="p-2 md:p-3 text-left font-bold">MUNICIPIO</th>
-                    <th className="p-2 md:p-3 text-center font-bold">SOAT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inscripcionesFiltradas.map((ins, index) => (
-                    <tr 
-                      key={ins.id} 
-                      className={`border-b border-[#E8E0D5] ${
-                        index % 2 === 0 ? 'bg-[#F8F0E3]/50' : 'bg-[#F5E6D3]/30'
-                      } hover:bg-[#C87A5D]/10 transition-colors`}
+              <form onSubmit={handleSubmit} className="space-y-4 bg-[#FFF9F0] p-4 rounded-xl border border-[#E8C999]/50">
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">NOMBRE COMPLETO *</label>
+                  <input
+                    type="text"
+                    name="nombreCompleto"
+                    value={formData.nombreCompleto}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting || countsLoading}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: JUAN PEREZ"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">CÉDULA *</label>
+                  <input
+                    type="text"
+                    name="cedula"
+                    value={formData.cedula}
+                    onChange={handleInputChange}
+                    required
+                    maxLength="10"
+                    disabled={isLoading || isSubmitting || countsLoading}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="SOLO NÚMEROS"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">NÚMERO DE CELULAR *</label>
+                  <input
+                    type="tel"
+                    name="celular"
+                    value={formData.celular}
+                    onChange={handleInputChange}
+                    required
+                    maxLength="10"
+                    disabled={isLoading || isSubmitting || countsLoading}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: 3001234567"
+                  />
+                  <p className="text-[10px] text-[#8B6F47] mt-1 font-bold">CELULAR MÓVIL COLOMBIANO (10 DÍGITOS, INICIA CON 3)</p>
+                </div>
+
+                {/* NUEVO CAMPO: LÍDER */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">NOMBRE DEL LÍDER QUE TE REFIERE *</label>
+                  <input
+                    type="text"
+                    name="lider"
+                    value={formData.lider}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting || countsLoading}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: PEDRO GOMEZ"
+                  />
+                  <p className="text-[10px] text-[#8B6F47] mt-1 font-bold">EL LÍDER QUE TE INVITA A PARTICIPAR</p>
+                </div>
+
+                {/* NUEVO CAMPO: IMAGEN SOAT COMO BASE64 */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">SOAT VIGENTE (IMAGEN) *</label>
+                  <div className="border-2 border-dashed border-[#C87A5D] rounded-lg p-5 bg-white text-center hover:border-[#E8C999] hover:shadow-lg transition-all">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSoatChange}
+                      disabled={isLoading || isSubmitting || countsLoading}
+                      className="hidden"
+                      id="soat-upload"
+                    />
+                    <label 
+                      htmlFor="soat-upload" 
+                      className={`cursor-pointer block ${
+                        (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
-                      <td className="p-2 md:p-3 font-mono text-[10px] md:text-xs text-[#6B5E51]">{ins.fechaFormateada}</td>
-                      <td className="p-2 md:p-3 font-bold text-xs md:text-sm truncate max-w-30 md:max-w-none text-[#4A3C30]">{ins.nombreCompleto}</td>
-                      <td className="p-2 md:p-3 font-mono text-xs md:text-sm text-[#4A3C30]">{ins.cedula}</td>
-                      <td className="p-2 md:p-3 font-mono text-xs md:text-sm text-[#4A3C30]">{ins.celular || 'N/A'}</td>
-                      <td className="p-2 md:p-3 font-bold text-xs md:text-sm text-[#8B6F47] truncate max-w-25">{ins.lider || 'SIN LÍDER'}</td>
-                      <td className="p-2 md:p-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          ins.tipoVehiculo === 'moto' ? 'bg-blue-200 text-blue-800' :
-                          ins.tipoVehiculo === 'vehiculo' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'
-                        }`}>
-                          {ins.tipoVehiculo === 'moto' ? '🏍️' : ins.tipoVehiculo === 'vehiculo' ? '🚗' : '🚙'}
-                        </span>
-                      </td>
-                      <td className="p-2 md:p-3 font-mono text-xs md:text-sm text-[#4A3C30]">{ins.placa}</td>
-                      <td className="p-2 md:p-3 font-bold text-xs md:text-sm text-[#C87A5D]">{ins.municipio}</td>
-                      <td className="p-2 md:p-3 text-center">
-                        <button
-                          onClick={() => verSoat(ins.soatBase64)}
-                          disabled={!ins.soatBase64}
-                          className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                            ins.soatBase64 
-                              ? 'bg-green-200 text-green-800 hover:bg-green-300' 
-                              : 'bg-red-200 text-red-800 cursor-not-allowed'
-                          } transition-all`}
-                          title={ins.soatBase64 ? 'Ver imagen SOAT' : 'SOAT no disponible'}
-                        >
-                          {ins.soatBase64 ? '🖼️ VER' : '❌ SIN SOAT'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </main>
+                      {soatPreview ? (
+                        <div className="space-y-3">
+                          <div className="relative w-40 h-40 mx-auto">
+                            <Image
+                              src={soatPreview}
+                              alt="Vista previa SOAT"
+                              fill
+                              className="object-contain rounded-lg border-3 border-[#C87A5D] shadow-lg"
+                            />
+                          </div>
+                          <p className="text-[#C87A5D] text-sm font-bold">✅ IMAGEN CARGADA (BASE64)</p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setSoatBase64(null);
+                              setSoatPreview(null);
+                            }}
+                            className="text-xs text-[#C87A5D] hover:underline font-bold"
+                          >
+                            Cambiar imagen
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="mx-auto w-16 h-16 bg-[#F5E6D3]/30 rounded-full flex items-center justify-center">
+                            <span className="text-4xl">📄</span>
+                          </div>
+                          <p className="text-[#8B6F47] text-sm font-bold">SUBIR IMAGEN DEL SOAT</p>
+                          <p className="text-xs text-[#8B6F47]/70">Toca para seleccionar imagen (máx. 1MB)</p>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-[#8B6F47] mt-2 font-bold">OBLIGATORIO - SOAT VIGENTE (GUARDADO COMO BASE64)</p>
+                </div>
 
-      <footer className="bg-[#E8C999] mt-5 py-3 text-center border-t-2 border-[#C87A5D]">
-        <div className="container mx-auto px-3 text-[#4A3C30]">
-          <p className="font-bold text-sm">© {new Date().getFullYear()} PARTIDO DE LA U - UNIDAD NACIONAL - TARJETA U99</p>
-          <p className="mt-1 text-xs">Sistema de monitoreo en tiempo real - Inscripciones de vehículos para María Irma</p>
-          <p className="mt-1 font-bold text-xs text-[#8B6F47]">¡Juntos por un Colombia mejor con la Tarjeta U99!</p>
-        </div>
-      </footer>
+                {/* Tipo de vehículo CON VERIFICACIÓN DE LÍMITE */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">TIPO DE VEHÍCULO *</label>
+                  <select
+                    name="tipoVehiculo"
+                    value={formData.tipoVehiculo}
+                    onChange={handleInputChange}
+                    disabled={isLoading || isSubmitting || countsLoading}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm appearance-none ${
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="moto" className="bg-white text-[#8B6F47] font-bold">
+                      🏍️ MOTO {vehicleCounts.motos >= LIMITES.moto ? '(LLENOS)' : `(Disponibles: ${LIMITES.moto - vehicleCounts.motos})`}
+                    </option>
+                    <option value="vehiculo" className="bg-white text-[#8B6F47] font-bold">
+                      🚗 VEHÍCULO PARTICULAR {vehicleCounts.vehiculos >= LIMITES.vehiculo ? '(LLENOS)' : `(Disponibles: ${LIMITES.vehiculo - vehicleCounts.vehiculos})`}
+                    </option>
+                    <option value="jeep" className="bg-white text-[#8B6F47] font-bold">
+                      🚙 JEEP/4X4 {vehicleCounts.jeeps >= LIMITES.jeep ? '(LLENOS)' : `(Disponibles: ${LIMITES.jeep - vehicleCounts.jeeps})`}
+                    </option>
+                  </select>
+                  {/* Mostrar mensaje si el tipo seleccionado está lleno */}
+                  {isVehicleLimitReached() && (
+                    <p className="text-[10px] text-[#E67E7E] mt-1 font-bold">{getLimitMessage()}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">PLACA DEL VEHÍCULO *</label>
+                  <input
+                    type="text"
+                    name="placa"
+                    value={formData.placa}
+                    onChange={handleInputChange}
+                    required
+                    disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
+                      (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
+                  />
+                  <p className="text-[10px] text-[#8B6F47] mt-1 font-bold">INGRESA LA PLACA COMPLETA DE TU VEHÍCULO</p>
+                </div>
+
+                {/* Municipio (27 municipios de Caldas) */}
+                <div>
+                  <label className="block text-xs font-bold text-[#8B6F47] mb-1">MUNICIPIO DE CALDAS *</label>
+                  <select
+                    name="municipio"
+                    value={formData.municipio}
+                    onChange={handleInputChange}
+                    disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
+                    className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm appearance-none ${
+                      (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
+                      <optgroup key={zona} label={`--- ${zona.toUpperCase()} ---`}>
+                        {municipios.map(municipio => (
+                          <option key={municipio} value={municipio} className="bg-white text-[#8B6F47] font-bold">
+                            {municipio}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
+                  className={`w-full bg-[#C87A5D] hover:bg-[#A65E47] text-[#F8F0E3] font-bold text-base py-3.5 px-6 rounded-lg transition-all duration-300 shadow-2xl border-2 border-[#E8C999] ${
+                    (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) 
+                      ? 'opacity-75 cursor-not-allowed' 
+                      : 'hover:shadow-2xl hover:scale-105'
+                  }`}
+                >
+                  {countsLoading ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-[#F8F0E3]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      CARGANDO CUPOS...
+                    </span>
+                  ) : isLoading || isSubmitting ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-[#F8F0E3]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
+                    </span>
+                  ) : isVehicleLimitReached() ? (
+                    <span>❌ CUPO LLENO - SELECCIONA OTRO VEHÍCULO</span>
+                  ) : (
+                    '✅ INSCRIBIR VEHÍCULO AHORA ✅'
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-5 pt-4 border-t border-[#C87A5D] text-center bg-[#FFF9F0] p-3.5 rounded-b-xl">
+                <p className="font-bold text-[#C87A5D] text-sm">✅ REGISTRO ILIMITADO POR TIPO DE VEHÍCULO</p>
+                <p className="mt-1 font-bold text-[#C87A5D] text-sm">📄 SOAT VIGENTE OBLIGATORIO (MÁX. 1MB)</p>
+                <p className="mt-1 text-[#8B6F47] font-bold text-xs">VOTA EN LA TARJETA: U99</p>
+              </div>
+            </div>
+
+            <div className="text-center text-[#4A3C30] text-xs mt-3">
+              <p className="font-bold">PLATAFORMA OFICIAL - PARTIDO DE LA U UNIDAD NACIONAL</p>
+              <p className="mt-1">María Irma - Candidata al Senado U99</p>
+              <div className="mt-3 flex justify-center space-x-4">
+                <span className="text-2xl">🇨🇴</span>
+                <span className="text-2xl">❤️</span>
+                <span className="text-2xl font-bold">U 99</span>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <footer className="bg-[#E8C999] mt-5 py-3.5 text-center border-t-2 border-[#C87A5D]">
+          <div className="container mx-auto px-3 text-[#4A3C30]">
+            <p className="font-bold text-sm">© {new Date().getFullYear()} PARTIDO DE LA U - UNIDAD NACIONAL - TARJETA U99</p>
+            <p className="mt-1 text-xs">Sistema de inscripción oficial - 27 Municipios de Caldas</p>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

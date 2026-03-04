@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import Image from 'next/image';
 
 export default function InscripcionPage() {
@@ -22,25 +22,34 @@ export default function InscripcionPage() {
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [vehicleCounts, setVehicleCounts] = useState({ motos: 0, vehiculos: 0, jeeps: 0 }); // NUEVO: Conteo de vehículos
+  const [countsLoading, setCountsLoading] = useState(true); // NUEVO: Estado de carga de conteos
+  
+  // LÍMITES POR TIPO DE VEHÍCULO
+  const LIMITES = {
+    moto: 50,
+    vehiculo: 150,
+    jeep: 20
+  };
   
   // NUEVO: Paleta de colores cálidos y suaves basada en la imagen de María Irma
   const coloresCalidos = {
-    cremaPrincipal: '#F5E6D3',      // Crema suave principal
-    doradoSuave: '#E8C999',         // Dorado cálido y suave
-    beigeClaro: '#F8F0E3',          // Beige muy claro
-    terracota: '#C87A5D',           // Terracota cálida
-    terracotaOscuro: '#A65E47',     // Terracota más oscuro
-    marronSuave: '#8B6F47',         // Marrón suave
-    blancoRoto: '#FFF9F0',          // Blanco roto cálido
-    grisPerla: '#E8E0D5',           // Gris perla cálido
-    doradoClaro: '#F5D7B3',         // Dorado claro
-    sombraSuave: '#D4B896',         // Sombra suave
-    textoOscuro: '#4A3C30',         // Texto oscuro cálido
-    textoMedio: '#6B5E51',          // Texto medio
-    verdeOliva: '#8A9B68',          // Verde oliva suave
-    verdeOscuro: '#6D7B55',         // Verde oliva oscuro
-    acentoCoral: '#E67E7E',         // Coral suave para acentos
-    acentoCoralOscuro: '#C46A6A'    // Coral más oscuro
+    cremaPrincipal: '#F5E6D3',
+    doradoSuave: '#E8C999',
+    beigeClaro: '#F8F0E3',
+    terracota: '#C87A5D',
+    terracotaOscuro: '#A65E47',
+    marronSuave: '#8B6F47',
+    blancoRoto: '#FFF9F0',
+    grisPerla: '#E8E0D5',
+    doradoClaro: '#F5D7B3',
+    sombraSuave: '#D4B896',
+    textoOscuro: '#4A3C30',
+    textoMedio: '#6B5E51',
+    verdeOliva: '#8A9B68',
+    verdeOscuro: '#6D7B55',
+    acentoCoral: '#E67E7E',
+    acentoCoralOscuro: '#C46A6A'
   };
   
   // Municipios de Caldas agrupados por zonas
@@ -55,6 +64,46 @@ export default function InscripcionPage() {
 
   const todosMunicipios = Object.values(municipiosPorZona).flat();
 
+  // NUEVO: Cargar conteos de vehículos en tiempo real
+  useEffect(() => {
+    setCountsLoading(true);
+    const unsubscribe = onSnapshot(collection(db, 'inscripciones'), (snapshot) => {
+      let counts = { motos: 0, vehiculos: 0, jeeps: 0 };
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.tipoVehiculo === 'moto') counts.motos++;
+        else if (data.tipoVehiculo === 'vehiculo') counts.vehiculos++;
+        else if (data.tipoVehiculo === 'jeep') counts.jeeps++;
+      });
+      setVehicleCounts(counts);
+      setCountsLoading(false);
+    }, (error) => {
+      console.error('Error cargando conteos de vehículos:', error);
+      setCountsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // NUEVO: Verificar si se alcanzó el límite para el tipo de vehículo seleccionado
+  const isVehicleLimitReached = () => {
+    if (formData.tipoVehiculo === 'moto') return vehicleCounts.motos >= LIMITES.moto;
+    if (formData.tipoVehiculo === 'vehiculo') return vehicleCounts.vehiculos >= LIMITES.vehiculo;
+    if (formData.tipoVehiculo === 'jeep') return vehicleCounts.jeeps >= LIMITES.jeep;
+    return false;
+  };
+
+  // NUEVO: Obtener mensaje de límite alcanzado
+  const getLimitMessage = () => {
+    if (formData.tipoVehiculo === 'moto' && vehicleCounts.motos >= LIMITES.moto) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito las ${LIMITES.moto} motos permitidas.`;
+    if (formData.tipoVehiculo === 'vehiculo' && vehicleCounts.vehiculos >= LIMITES.vehiculo) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito los ${LIMITES.vehiculo} vehículos permitidos.`;
+    if (formData.tipoVehiculo === 'jeep' && vehicleCounts.jeeps >= LIMITES.jeep) 
+      return `❌ LÍMITE ALCANZADO: Se han inscrito los ${LIMITES.jeep} jeeps permitidos.`;
+    return '';
+  };
+
   // Manejar cambio de inputs
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -66,6 +115,10 @@ export default function InscripcionPage() {
       setFormData(prev => ({ ...prev, [name]: value.replace(/[^A-Z0-9]/gi, '').toUpperCase() }));
     } else if (name === 'nombreCompleto' || name === 'lider') {
       setFormData(prev => ({ ...prev, [name]: value.toUpperCase() }));
+    } else if (name === 'tipoVehiculo') {
+      // Resetear error al cambiar tipo de vehículo
+      setError('');
+      setFormData(prev => ({ ...prev, [name]: value }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
@@ -109,6 +162,12 @@ export default function InscripcionPage() {
   // Validación del formulario
   const validateForm = () => {
     setError('');
+    
+    // NUEVO: Verificar límite ANTES de otras validaciones
+    if (isVehicleLimitReached()) {
+      setError(getLimitMessage());
+      return false;
+    }
     
     if (!formData.nombreCompleto.trim()) {
       setError('EL NOMBRE COMPLETO ES REQUERIDO');
@@ -195,6 +254,12 @@ export default function InscripcionPage() {
     
     if (isSubmitting) {
       setError('⚠️ ESPERA: Ya se está procesando tu inscripción...');
+      return;
+    }
+    
+    // NUEVO: Verificación de límite al momento del submit
+    if (isVehicleLimitReached()) {
+      setError(getLimitMessage());
       return;
     }
     
@@ -306,6 +371,26 @@ export default function InscripcionPage() {
                   <p className="text-base font-bold">EQUIPO DE TRABAJO ELECCIÓN SENADO</p>
                   <p className="text-sm">María Irma - Candidata al Senado U99</p>
                 </div>
+                
+                {/* NUEVO: Panel de cupos disponibles */}
+                <div className="bg-[#E8F5E9] border-l-4 border-[#8A9B68] p-3 rounded-lg mb-3">
+                  <p className="font-bold text-[#6D7B55] text-sm text-center">📊 CUPOS DISPONIBLES</p>
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.moto - vehicleCounts.motos}</p>
+                      <p className="text-[10px] text-[#6B5E51]">MOTOS<br/>(50 max)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.vehiculo - vehicleCounts.vehiculos}</p>
+                      <p className="text-[10px] text-[#6B5E51]">VEHÍCULOS<br/>(150 max)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-bold text-[#C87A5D] text-lg">{LIMITES.jeep - vehicleCounts.jeeps}</p>
+                      <p className="text-[10px] text-[#6B5E51]">JEEPS<br/>(20 max)</p>
+                    </div>
+                  </div>
+                </div>
+                
                 <div className="bg-[#F8F0E3] border-l-4 border-[#E67E7E] p-3 rounded-r shadow-md">
                   <p className="font-bold text-[#C87A5D] text-sm">⚠️ IMPORTANTE:</p>
                   <p className="text-[#6B5E51] mt-1 text-xs">
@@ -349,9 +434,9 @@ export default function InscripcionPage() {
                     value={formData.nombreCompleto}
                     onChange={handleInputChange}
                     required
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: JUAN PEREZ"
                   />
@@ -366,9 +451,9 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     maxLength="10"
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="SOLO NÚMEROS"
                   />
@@ -383,9 +468,9 @@ export default function InscripcionPage() {
                     onChange={handleInputChange}
                     required
                     maxLength="10"
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: 3001234567"
                   />
@@ -401,9 +486,9 @@ export default function InscripcionPage() {
                     value={formData.lider}
                     onChange={handleInputChange}
                     required
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: PEDRO GOMEZ"
                   />
@@ -418,14 +503,14 @@ export default function InscripcionPage() {
                       type="file"
                       accept="image/*"
                       onChange={handleSoatChange}
-                      disabled={isLoading || isSubmitting}
+                      disabled={isLoading || isSubmitting || countsLoading}
                       className="hidden"
                       id="soat-upload"
                     />
                     <label 
                       htmlFor="soat-upload" 
                       className={`cursor-pointer block ${
-                        (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                        (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                       }`}
                     >
                       {soatPreview ? (
@@ -465,22 +550,32 @@ export default function InscripcionPage() {
                   <p className="text-[10px] text-[#8B6F47] mt-2 font-bold">OBLIGATORIO - SOAT VIGENTE (GUARDADO COMO BASE64)</p>
                 </div>
 
-                {/* Tipo de vehículo */}
+                {/* Tipo de vehículo CON VERIFICACIÓN DE LÍMITE */}
                 <div>
                   <label className="block text-xs font-bold text-[#8B6F47] mb-1">TIPO DE VEHÍCULO *</label>
                   <select
                     name="tipoVehiculo"
                     value={formData.tipoVehiculo}
                     onChange={handleInputChange}
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm appearance-none ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
-                    <option value="moto" className="bg-white text-[#8B6F47] font-bold">🏍️ MOTO</option>
-                    <option value="vehiculo" className="bg-white text-[#8B6F47] font-bold">🚗 VEHÍCULO PARTICULAR</option>
-                    <option value="jeep" className="bg-white text-[#8B6F47] font-bold">🚙 JEEP/4X4</option>
+                    <option value="moto" className="bg-white text-[#8B6F47] font-bold">
+                      🏍️ MOTO {vehicleCounts.motos >= LIMITES.moto ? '(LLENOS)' : `(Disponibles: ${LIMITES.moto - vehicleCounts.motos})`}
+                    </option>
+                    <option value="vehiculo" className="bg-white text-[#8B6F47] font-bold">
+                      🚗 VEHÍCULO PARTICULAR {vehicleCounts.vehiculos >= LIMITES.vehiculo ? '(LLENOS)' : `(Disponibles: ${LIMITES.vehiculo - vehicleCounts.vehiculos})`}
+                    </option>
+                    <option value="jeep" className="bg-white text-[#8B6F47] font-bold">
+                      🚙 JEEP/4X4 {vehicleCounts.jeeps >= LIMITES.jeep ? '(LLENOS)' : `(Disponibles: ${LIMITES.jeep - vehicleCounts.jeeps})`}
+                    </option>
                   </select>
+                  {/* Mostrar mensaje si el tipo seleccionado está lleno */}
+                  {isVehicleLimitReached() && (
+                    <p className="text-[10px] text-[#E67E7E] mt-1 font-bold">{getLimitMessage()}</p>
+                  )}
                 </div>
 
                 <div>
@@ -491,9 +586,9 @@ export default function InscripcionPage() {
                     value={formData.placa}
                     onChange={handleInputChange}
                     required
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm placeholder-[#8B6F47]/50 ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                     placeholder="EJ: ABC123 (MOTOS) o FGH789 (VEHÍCULOS)"
                   />
@@ -507,9 +602,9 @@ export default function InscripcionPage() {
                     name="municipio"
                     value={formData.municipio}
                     onChange={handleInputChange}
-                    disabled={isLoading || isSubmitting}
+                    disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
                     className={`w-full px-3.5 py-2.5 bg-white border-2 border-[#C87A5D] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#E8C999] focus:border-transparent text-[#4A3C30] font-bold text-sm appearance-none ${
-                      (isLoading || isSubmitting) ? 'opacity-50 cursor-not-allowed' : ''
+                      (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
                     {Object.entries(municipiosPorZona).map(([zona, municipios]) => (
@@ -526,12 +621,22 @@ export default function InscripcionPage() {
 
                 <button
                   type="submit"
-                  disabled={isLoading || isSubmitting}
+                  disabled={isLoading || isSubmitting || countsLoading || isVehicleLimitReached()}
                   className={`w-full bg-[#C87A5D] hover:bg-[#A65E47] text-[#F8F0E3] font-bold text-base py-3.5 px-6 rounded-lg transition-all duration-300 shadow-2xl border-2 border-[#E8C999] ${
-                    (isLoading || isSubmitting) ? 'opacity-75 cursor-not-allowed' : 'hover:shadow-2xl hover:scale-105'
+                    (isLoading || isSubmitting || countsLoading || isVehicleLimitReached()) 
+                      ? 'opacity-75 cursor-not-allowed' 
+                      : 'hover:shadow-2xl hover:scale-105'
                   }`}
                 >
-                  {isLoading || isSubmitting ? (
+                  {countsLoading ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-[#F8F0E3]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      CARGANDO CUPOS...
+                    </span>
+                  ) : isLoading || isSubmitting ? (
                     <span className="flex items-center justify-center">
                       <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-[#F8F0E3]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -539,6 +644,8 @@ export default function InscripcionPage() {
                       </svg>
                       {error.includes('Verificando') || error.includes('Verificación lenta') ? error : 'PROCESANDO... ESPERA POR FAVOR'}
                     </span>
+                  ) : isVehicleLimitReached() ? (
+                    <span>❌ CUPO LLENO - SELECCIONA OTRO VEHÍCULO</span>
                   ) : (
                     '✅ INSCRIBIR VEHÍCULO AHORA ✅'
                   )}
@@ -546,7 +653,7 @@ export default function InscripcionPage() {
               </form>
 
               <div className="mt-5 pt-4 border-t border-[#C87A5D] text-center bg-[#FFF9F0] p-3.5 rounded-b-xl">
-                <p className="font-bold text-[#C87A5D] text-sm">✅ REGISTRO ILIMITADO Y GRATUITO</p>
+                <p className="font-bold text-[#C87A5D] text-sm">✅ REGISTRO ILIMITADO POR TIPO DE VEHÍCULO</p>
                 <p className="mt-1 font-bold text-[#C87A5D] text-sm">📄 SOAT VIGENTE OBLIGATORIO (MÁX. 1MB)</p>
                 <p className="mt-1 text-[#8B6F47] font-bold text-xs">VOTA EN LA TARJETA: U99</p>
               </div>
